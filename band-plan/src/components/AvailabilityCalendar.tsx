@@ -69,14 +69,16 @@ export default function AvailabilityCalendar({
     /* Estilos para días seleccionados - con mayor especificidad para garantizar que se apliquen */
     .rdp-day_selected:not([disabled]), 
     .rdp-day_selected:hover:not([disabled]),
-    .rdp-day_selected:focus:not([disabled]),
-    .selected-day:not([disabled]),
-    .selected-day:hover:not([disabled]),
-    .selected-day:focus:not([disabled]) { 
-      background-color: #4f46e5 !important; 
-      color: white !important;
+    .rdp-day_selected:focus:not([disabled]) { 
       font-weight: bold !important;
       box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.5) !important;
+    }
+    
+    /* Separamos los estilos para que el fondo no afecte a la visualización de los puntos */
+    .rdp-day_selected .day-content:not(.selected-day),
+    .rdp-day_selected:hover .day-content:not(.selected-day),
+    .rdp-day_selected:focus .day-content:not(.selected-day) {
+      background-color: #4f46e5 !important;
     }
     
     /* Estilos para días con eventos externos */
@@ -600,9 +602,6 @@ useEffect(() => {
   };
 
   const handleDayClick = async (day: Date) => {
-    // Forzar la actualización del día seleccionado inmediatamente
-    setSelectedDay(day);
-    
     // Mostrar feedback visual inmediato de la selección
     console.log(`Fecha seleccionada: ${format(day, 'dd/MM/yyyy')}`);
     
@@ -625,6 +624,7 @@ useEffect(() => {
 
     if (!canManage) {
       toast.error('No tienes permisos para gestionar esta disponibilidad');
+      setSaving(false);
       return;
     }
 
@@ -637,14 +637,15 @@ useEffect(() => {
 
     if (hasEventOnDate) {
       toast.error('No puedes cambiar tu disponibilidad en fechas con eventos programados');
+      setSaving(false);
       return;
     }
     
-    setSaving(true);
     try {
       const currentMember = members.find(m => m.user_id === userId);
       if (!currentMember) {
         toast.error('Miembro no encontrado');
+        setSaving(false);
         return;
       }
   
@@ -654,13 +655,12 @@ useEffect(() => {
   
       const dateStr = format(day, 'yyyy-MM-dd');
       
-      // Enfoque simplificado: primero actualizar en la base de datos
+      // Actualizar el estado visual del día seleccionado después de determinar si está disponible o no
+      // Solo actualizamos el día seleccionado si la operación es exitosa
+      
       if (isSelected) {
         // Eliminar la fecha de la base de datos
         try {
-          // Primero mostramos un mensaje de éxito para feedback inmediato
-          toast.success(`Fecha ${format(day, 'dd/MM/yyyy')} eliminada de tu disponibilidad`);
-          
           // Luego intentamos la operación en la base de datos
           const deleteResponse = await supabase
             .from('member_availability')
@@ -670,9 +670,14 @@ useEffect(() => {
           
           if (deleteResponse.error) {
             console.error('Error al eliminar disponibilidad:', deleteResponse.error);
-            // Si hay error, mostramos un mensaje pero no interrumpimos la experiencia
-            toast.error('Hubo un problema al guardar, pero intentaremos de nuevo');
+            toast.error('Hubo un problema al guardar');
+            setSaving(false);
+            return;
           }
+          
+          // Si la operación fue exitosa, actualizamos el estado visual
+          setSelectedDay(day);
+          toast.success(`Fecha ${format(day, 'dd/MM/yyyy')} eliminada de tu disponibilidad`);
           
           // Actualizar el estado local sin hacer fetch
           setAvailabilities(prev => prev.map(avail => {
@@ -689,16 +694,11 @@ useEffect(() => {
           calculateGroupAvailability();
         } catch (error) {
           console.error('Error inesperado al eliminar disponibilidad:', error);
-          // No mostramos error al usuario, ya que la fecha probablemente se eliminó
-        } finally {
-          setSaving(false);
+          toast.error('Ha ocurrido un error al procesar tu solicitud');
         }
       } else {
         // Añadir la fecha a la base de datos
         try {
-          // Primero mostramos un mensaje de éxito para feedback inmediato
-          toast.success(`Fecha ${format(day, 'dd/MM/yyyy')} añadida a tu disponibilidad`);
-          
           // Luego intentamos la operación en la base de datos
           const insertResponse = await supabase
             .from('member_availability')
@@ -706,9 +706,14 @@ useEffect(() => {
           
           if (insertResponse.error) {
             console.error('Error al insertar disponibilidad:', insertResponse.error);
-            // Si hay error, mostramos un mensaje pero no interrumpimos la experiencia
-            toast.error('Hubo un problema al guardar, pero intentaremos de nuevo');
+            toast.error('Hubo un problema al guardar');
+            setSaving(false);
+            return;
           }
+          
+          // Si la operación fue exitosa, actualizamos el estado visual
+          setSelectedDay(day);
+          toast.success(`Fecha ${format(day, 'dd/MM/yyyy')} añadida a tu disponibilidad`);
           
           // Actualizar el estado local sin hacer fetch
           setAvailabilities(prev => prev.map(avail => {
@@ -725,19 +730,8 @@ useEffect(() => {
           calculateGroupAvailability();
         } catch (error) {
           console.error('Error inesperado al añadir disponibilidad:', error);
-          // No mostramos error al usuario, ya que la fecha probablemente se guardó
-        } finally {
-          setSaving(false);
+          toast.error('Ha ocurrido un error al procesar tu solicitud');
         }
-      }
-      
-      // Recalcular la disponibilidad del grupo
-      try {
-        console.log('Intentando recalcular la disponibilidad del grupo...');
-        calculateGroupAvailability();
-        console.log('Disponibilidad del grupo recalculada con éxito');
-      } catch (error) {
-        console.error('Error al recalcular la disponibilidad del grupo:', error);
       }
     } catch (error) {
       console.error('Error en handleDayClick:', error);
@@ -813,9 +807,9 @@ useEffect(() => {
           isGroupNotAvailable ? 'group-not-available' : ''
         } ${hasEvent ? 'has-event' : ''} ${
           hasMembersWithExternalEvents ? 'has-external-events' : ''
-        } ${selectedDay && isSameDay(date, selectedDay) ? 'selected-day bg-indigo-600 text-white' : ''}`}
+        } ${selectedDay && isSameDay(date, selectedDay) ? 'selected-day' : ''}`}
       >
-        <span>{date.getDate()}</span>
+        <span className={`${selectedDay && isSameDay(date, selectedDay) ? 'text-indigo-900 font-bold' : ''}`}>{date.getDate()}</span>
         {(isCurrentUserInvolved || otherMembersCount > 0 || hasEvent) && (
           <>
             <div className="availability-dots">
@@ -1058,7 +1052,7 @@ useEffect(() => {
             selected: 'rdp-day_selected'
           }}
           classNames={{
-            day_selected: 'bg-indigo-600 text-white font-bold hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500'
+            day_selected: 'font-bold hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500'
           }}
           fromDate={new Date()}
           components={{
