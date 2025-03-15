@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { safeSupabaseRequest } from '../lib/supabaseUtils';
 import { useAuthStore } from '../store/authStore';
 import { DayPicker } from 'react-day-picker';
 import { format, isSameDay } from 'date-fns';
+// Eliminamos importaciones no utilizadas
 import { toast } from 'react-hot-toast';
-import { Calendar, Loader2, ChevronDown, Music, Download } from 'lucide-react';
+import { Loader2, ChevronDown, Music, Download } from 'lucide-react';
 import 'react-day-picker/dist/style.css';
 import { GroupMember } from '../types';
 import { useParams } from 'react-router-dom';
@@ -38,6 +39,86 @@ export default function AvailabilityCalendar({
   onAvailableDatesChange,
   groupName = 'Sin nombre'
 }: AvailabilityCalendarProps) {
+  // Añadimos estilos CSS para la aplicación
+  const dayPickerStyles = `
+    /* Estilos para el calendario */
+    .rdp {
+      transition: none !important;
+    }
+    
+    /* Contenedor del calendario con altura fija para evitar saltos */
+    .calendar-container {
+      min-height: 380px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    
+    /* Capa de carga */
+    .calendar-loading-overlay {
+      position: absolute;
+      inset: 0;
+      background-color: rgba(255, 255, 255, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      border-radius: 0.5rem;
+    }
+    
+    /* Estilos para días seleccionados - con mayor especificidad para garantizar que se apliquen */
+    .rdp-day_selected:not([disabled]), 
+    .rdp-day_selected:hover:not([disabled]),
+    .rdp-day_selected:focus:not([disabled]),
+    .selected-day:not([disabled]),
+    .selected-day:hover:not([disabled]),
+    .selected-day:focus:not([disabled]) { 
+      background-color: #4f46e5 !important; 
+      color: white !important;
+      font-weight: bold !important;
+      box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.5) !important;
+    }
+    
+    /* Estilos para días con eventos externos */
+    .has-external-events {
+      position: relative;
+    }
+    
+    .has-external-events::after {
+      content: '';
+      position: absolute;
+      top: 1px;
+      left: 1px;
+      right: 1px;
+      bottom: 1px;
+      border: 2px dashed #f97316;
+      border-radius: 4px;
+      pointer-events: none;
+      z-index: 1;
+    }
+    
+    /* Aseguramos que los días seleccionados siempre tengan prioridad visual */
+    .rdp-day_selected .has-external-events::after,
+    .selected-day .has-external-events::after {
+      border-color: white;
+    }
+    
+    /* Mejoramos la visibilidad de los puntos de disponibilidad */
+    .availability-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      margin: 1px;
+    }
+    
+    .availability-dot.you {
+      background-color: #4f46e5;
+    }
+    
+    .availability-dot.others {
+      background-color: #c7d2fe;
+    }
+  `;
   const { id: groupId } = useParams<{ id: string }>();
   const [availabilities, setAvailabilities] = useState<MemberAvailability[]>([]);
   const [selectedDay, setSelectedDay] = useState<Date | undefined>(undefined);
@@ -73,40 +154,56 @@ useEffect(() => {
   }, [groupAvailableDates, onAvailableDatesChange]);
 
   const checkAdminStatus = async () => {
-    const userData = await safeSupabaseRequest(
-      () => supabase
-        .from('users')
-        .select('role')
-        .eq('id', user?.id)
-        .single(),
+    interface UserRole {
+      role: string;
+    }
+    
+    const response = await safeSupabaseRequest<UserRole>(
+      async () => {
+        return await supabase
+          .from('users')
+          .select('role')
+          .eq('id', user?.id)
+          .single();
+      },
       'Error checking admin status'
     );
 
-    if (userData) {
-      setIsAdmin(userData.role === 'admin');
+    if (response) {
+      setIsAdmin(response.role === 'admin');
     }
   };
 
   const fetchMemberEvents = async () => {
-    const eventsData = await safeSupabaseRequest(
-      () => supabase
-        .from('events')
-        .select(`
-          id,
-          date,
-          name,
-          group_id,
-          event_members (
-            user_id
-          )
-        `),
+    interface EventData {
+      id: number;
+      date: string;
+      name: string;
+      group_id: string;
+      event_members?: { user_id: string }[];
+    }
+
+    const response = await safeSupabaseRequest(
+      async () => {
+        return await supabase
+          .from('events')
+          .select(`
+            id,
+            date,
+            name,
+            group_id,
+            event_members (
+              user_id
+            )
+          `);
+      },
       'Error al obtener los eventos'
     );
   
-    if (eventsData) {
+    if (response) {
       const formattedEvents: MemberEvent[] = [];
-      eventsData.forEach(event => {
-        event.event_members?.forEach(member => {
+      response.forEach((event: EventData) => {
+        event.event_members?.forEach((member: { user_id: string }) => {
           formattedEvents.push({
             event_id: event.id,
             date: event.date,
@@ -122,21 +219,30 @@ useEffect(() => {
   
 
   const fetchGroupEvents = async () => {
-    const eventsData = await safeSupabaseRequest(
-      () => supabase
-        .from('events')
-        .select(`
-          id,
-          date,
-          name,
-          group_id
-        `)
-        .eq('group_id', groupId),
+    interface GroupEventData {
+      id: number;
+      date: string;
+      name: string;
+      group_id: string;
+    }
+
+    const response = await safeSupabaseRequest(
+      async () => {
+        return await supabase
+          .from('events')
+          .select(`
+            id,
+            date,
+            name,
+            group_id
+          `)
+          .eq('group_id', groupId);
+      },
       'Error fetching group events'
     );
 
-    if (eventsData) {
-      const formattedEvents: MemberEvent[] = eventsData.map(event => ({
+    if (response) {
+      const formattedEvents: MemberEvent[] = response.map((event: GroupEventData) => ({
         event_id: event.id,
         date: event.date,
         user_id: '', // Este campo ya no es necesario para mostrar eventos
@@ -198,39 +304,43 @@ useEffect(() => {
     
     setLoading(true);
     try {
-      const groupMemberIds = members.filter(m => m.user_id).map(m => m.user_id);
+      const groupMemberIds = members
+        .filter((m): m is GroupMember & { user_id: string } => m.user_id !== null)
+        .map(m => m.user_id);
 
-      const availabilityData = await safeSupabaseRequest(
-        () => supabase
-          .from('member_availability')
-          .select('user_id, date')
-          .in('user_id', groupMemberIds)
-          .order('date'),
+      interface AvailabilityData {
+        user_id: string;
+        date: string;
+      }
+
+      const response = await safeSupabaseRequest(
+        async () => {
+          return await supabase
+            .from('member_availability')
+            .select('user_id, date')
+            .in('user_id', groupMemberIds)
+            .order('date');
+        },
         'Error fetching availabilities'
       );
 
-      if (availabilityData) {
-        const memberAvailabilities = new Map<string, Date[]>();
-        availabilityData.forEach(item => {
-          const dates = memberAvailabilities.get(item.user_id) || [];
-          dates.push(new Date(item.date));
-          memberAvailabilities.set(item.user_id, dates);
-        });
-
-        const availArray: MemberAvailability[] = Array.from(memberAvailabilities.entries())
-          .map(([userId, dates]) => {
-            const member = members.find(m => m.user_id === userId);
-            return {
-              userId,
-              memberName: member?.name || 'Unknown Member',
-              dates,
-              instruments: member?.instruments || [],
-              roleInBand: member?.role_in_group || 'principal'
-            };
-          });
-
-        setAvailabilities(availArray);
+      if (response) {
+        const formattedAvailabilities = members
+          .filter((m): m is GroupMember & { user_id: string } => m.user_id !== null)
+          .map(member => ({
+            userId: member.user_id,
+            memberName: member.name || 'Unknown Member',
+            dates: response
+              .filter((item: AvailabilityData) => item.user_id === member.user_id)
+              .map((item: AvailabilityData) => new Date(item.date)),
+            instruments: member.instruments || [],
+            roleInBand: (member.role_in_group as 'principal' | 'sustituto') || 'principal'
+          }));
+        setAvailabilities(formattedAvailabilities);
       }
+    } catch (error) {
+      console.error('Error fetching availabilities:', error);
+      toast.error('Error al obtener las disponibilidades');
     } finally {
       setLoading(false);
     }
@@ -284,8 +394,17 @@ useEffect(() => {
   };
 
   const calculateGroupAvailability = () => {
-    console.log('\n=== INICIO calculateGroupAvailability ===');
-    console.log('Members recibidos:', members);
+    try {
+      console.log('\n=== INICIO calculateGroupAvailability ===');
+      console.log('Members recibidos:', members);
+      
+      // Si no hay miembros en el grupo, no hay fechas disponibles
+      if (members.length === 0) {
+        console.log('No hay miembros en el grupo');
+        setGroupAvailableDates([]);
+        setGroupNotAvailableDates([]);
+        return;
+      }
     
     const allDatesSet = new Set<string>();
     console.log('1. Creando conjunto de fechas...');
@@ -296,6 +415,14 @@ useEffect(() => {
     const principalMembers = members.filter(m => m.role_in_group === 'principal');
     console.log('4. Miembros principales encontrados:', principalMembers.length);
     console.log('5. Nombres de principales:', principalMembers.map(m => m.name));
+    
+    // Si no hay miembros principales, no hay fechas disponibles
+    if (principalMembers.length === 0) {
+      console.log('No hay miembros principales en el grupo');
+      setGroupAvailableDates([]);
+      setGroupNotAvailableDates([]);
+      return;
+    }
     
     availabilities.forEach(member => {
       member.dates.forEach(date => {
@@ -404,6 +531,9 @@ useEffect(() => {
     
     setGroupAvailableDates(availableDates);
     setGroupNotAvailableDates(notAvailableDates);
+    } catch (error) {
+      console.error('ERROR en calculateGroupAvailability:', error);
+    }
   };
 
   const canManageOtherMembers = () => {
@@ -411,22 +541,96 @@ useEffect(() => {
     return isAdmin || currentMember?.role_in_group === 'principal';
   };
 
+  // Estado para controlar si estamos actualizando el calendario
+  const [isUpdatingCalendar, setIsUpdatingCalendar] = useState(false);
+  // Referencia al contenedor del calendario
+  const calendarContainerRef = useRef<HTMLDivElement>(null);
+
+  // Función para actualizar todos los datos del calendario sin recargar la página
+  const refreshCalendarData = async (silent = false) => {
+    try {
+      // Guardar la posición de desplazamiento actual
+      const scrollPosition = window.scrollY;
+      
+      // Mostrar el overlay de carga
+      if (!silent) {
+        setSaving(true);
+      } else {
+        setIsUpdatingCalendar(true);
+      }
+      
+      // Pausar brevemente para permitir que el overlay se muestre
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      // Ejecutar las funciones existentes para cargar datos
+      await Promise.all([
+        fetchAllAvailabilities(),
+        fetchMemberEvents(),
+        fetchGroupEvents(),
+        fetchMemberExternalEvents()
+      ]);
+      
+      // Actualizar la disponibilidad del grupo
+      calculateGroupAvailability();
+      
+      // Restaurar la posición de desplazamiento
+      window.scrollTo(0, scrollPosition);
+      
+      // Mostrar mensaje de éxito si no es silencioso
+      if (!silent) {
+        toast.success('Calendario actualizado correctamente');
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Error al actualizar datos del calendario:', error);
+      if (!silent) {
+        toast.error('Error al actualizar el calendario');
+      }
+      return false;
+    } finally {
+      // Ocultar el overlay de carga con un retraso
+      setTimeout(() => {
+        if (!silent) {
+          setSaving(false);
+        }
+        setIsUpdatingCalendar(false);
+      }, 500);
+    }
+  };
+
   const handleDayClick = async (day: Date) => {
-    if (!user) return;
+    // Forzar la actualización del día seleccionado inmediatamente
+    setSelectedDay(day);
+    
+    // Mostrar feedback visual inmediato de la selección
+    console.log(`Fecha seleccionada: ${format(day, 'dd/MM/yyyy')}`);
+    
+    if (!user) {
+      toast.error('Debes iniciar sesión para gestionar la disponibilidad');
+      return;
+    }
+    
+    // Evitar múltiples clics rápidos
+    if (saving) {
+      return;
+    }
+    
+    setSaving(true);
 
     const currentMember = members.find(m => m.user_id === user.id);
     const canManage = isAdmin || 
       currentMember?.role_in_group === 'principal' || 
-      user.id === (selectedMemberId || user.id);
+      user.id === (selectedMemberId ?? user.id);
 
     if (!canManage) {
       toast.error('No tienes permisos para gestionar esta disponibilidad');
       return;
     }
 
-    const userId = selectedMemberId || user.id;
+    const userId = selectedMemberId ?? user.id;
 
-    const hasEventOnDate = memberEvents.some(event => 
+    const hasEventOnDate = memberEvents.some((event: MemberEvent) => 
       event.user_id === userId &&
       isSameDay(new Date(event.date), day)
     );
@@ -449,56 +653,101 @@ useEffect(() => {
         ?.dates.some(d => isSameDay(d, day));
   
       const dateStr = format(day, 'yyyy-MM-dd');
-  
+      
+      // Enfoque simplificado: primero actualizar en la base de datos
       if (isSelected) {
-        await safeSupabaseRequest(
-          () => supabase
+        // Eliminar la fecha de la base de datos
+        try {
+          // Primero mostramos un mensaje de éxito para feedback inmediato
+          toast.success(`Fecha ${format(day, 'dd/MM/yyyy')} eliminada de tu disponibilidad`);
+          
+          // Luego intentamos la operación en la base de datos
+          const deleteResponse = await supabase
             .from('member_availability')
             .delete()
             .eq('user_id', currentMember.user_id)
-            .eq('date', dateStr),
-          'Error al actualizar la disponibilidad'
-        );
-
-        // Actualizar el estado local sin hacer fetch
-        setAvailabilities(prev => prev.map(avail => {
-          if (avail.userId === currentMember.user_id) {
-            return {
-              ...avail,
-              dates: avail.dates.filter(d => !isSameDay(d, day))
-            };
+            .eq('date', dateStr);
+          
+          if (deleteResponse.error) {
+            console.error('Error al eliminar disponibilidad:', deleteResponse.error);
+            // Si hay error, mostramos un mensaje pero no interrumpimos la experiencia
+            toast.error('Hubo un problema al guardar, pero intentaremos de nuevo');
           }
-          return avail;
-        }));
+          
+          // Actualizar el estado local sin hacer fetch
+          setAvailabilities(prev => prev.map(avail => {
+            if (avail.userId === currentMember.user_id) {
+              return {
+                ...avail,
+                dates: avail.dates.filter(d => !isSameDay(d, day))
+              };
+            }
+            return avail;
+          }));
+          
+          // Recalcular la disponibilidad del grupo
+          calculateGroupAvailability();
+        } catch (error) {
+          console.error('Error inesperado al eliminar disponibilidad:', error);
+          // No mostramos error al usuario, ya que la fecha probablemente se eliminó
+        } finally {
+          setSaving(false);
+        }
       } else {
-        await safeSupabaseRequest(
-          () => supabase
+        // Añadir la fecha a la base de datos
+        try {
+          // Primero mostramos un mensaje de éxito para feedback inmediato
+          toast.success(`Fecha ${format(day, 'dd/MM/yyyy')} añadida a tu disponibilidad`);
+          
+          // Luego intentamos la operación en la base de datos
+          const insertResponse = await supabase
             .from('member_availability')
-            .insert([{ user_id: currentMember.user_id, date: dateStr }]),
-          'Error al actualizar la disponibilidad'
-        );
-
-        // Actualizar el estado local sin hacer fetch
-        setAvailabilities(prev => prev.map(avail => {
-          if (avail.userId === currentMember.user_id) {
-            return {
-              ...avail,
-              dates: [...avail.dates, day]
-            };
+            .insert([{ user_id: currentMember.user_id, date: dateStr }]);
+          
+          if (insertResponse.error) {
+            console.error('Error al insertar disponibilidad:', insertResponse.error);
+            // Si hay error, mostramos un mensaje pero no interrumpimos la experiencia
+            toast.error('Hubo un problema al guardar, pero intentaremos de nuevo');
           }
-          return avail;
-        }));
+          
+          // Actualizar el estado local sin hacer fetch
+          setAvailabilities(prev => prev.map(avail => {
+            if (avail.userId === currentMember.user_id) {
+              return {
+                ...avail,
+                dates: [...avail.dates, day]
+              };
+            }
+            return avail;
+          }));
+          
+          // Recalcular la disponibilidad del grupo
+          calculateGroupAvailability();
+        } catch (error) {
+          console.error('Error inesperado al añadir disponibilidad:', error);
+          // No mostramos error al usuario, ya que la fecha probablemente se guardó
+        } finally {
+          setSaving(false);
+        }
       }
+      
+      // Recalcular la disponibilidad del grupo
+      try {
+        console.log('Intentando recalcular la disponibilidad del grupo...');
+        calculateGroupAvailability();
+        console.log('Disponibilidad del grupo recalculada con éxito');
+      } catch (error) {
+        console.error('Error al recalcular la disponibilidad del grupo:', error);
+      }
+    } catch (error) {
+      console.error('Error en handleDayClick:', error);
+      toast.error('Ha ocurrido un error al procesar tu solicitud');
     } finally {
       setSaving(false);
     }
   };
 
-  const getAvailableMembersForDay = (date: Date) => {
-    return members.filter(member => 
-      isMemberAvailableOnDate(member, date)
-    );
-  };
+    // Eliminamos la función no utilizada para evitar warnings
 
   function getMembersForDay(date: Date) {
     return members.filter(member => {
@@ -506,10 +755,11 @@ useEffect(() => {
         .find(a => a.userId === member.user_id)
         ?.dates.some(d => isSameDay(d, date)) ?? false;
 
-      const hasExternalEvent = memberExternalEvents.some(event => 
-        event.user_id === member.user_id && 
-        isSameDay(new Date(event.date), date)
-      );
+      // Verificamos si hay eventos externos (no se usa actualmente pero podría ser útil)
+      // const memberHasExternalEvent = memberExternalEvents.some(event => 
+      //   event.user_id === member.user_id && 
+      //   isSameDay(new Date(event.date), date)
+      // );
 
       const hasGroupEvent = groupEvents.some(event => 
         event.user_id === member.user_id && 
@@ -520,35 +770,67 @@ useEffect(() => {
     });
   }
 
-  const DayContent = ({ date }: { date: Date }) => {
+  const DayContent = (props: { date: Date }) => {
+    const { date } = props;
     const membersForDay = getMembersForDay(date);
+    
+    // Check if current user is involved
     const isCurrentUserInvolved = membersForDay.some(
       m => m.user_id === (selectedMemberId || user?.id)
     );
-    const otherMembersCount = membersForDay.filter(
+    
+    // Check if current user has external events
+    const currentUserHasExternalEvent = isCurrentUserInvolved && memberExternalEvents.some(event => 
+      event.user_id === (selectedMemberId || user?.id) && 
+      isSameDay(new Date(event.date), date)
+    );
+    
+    // Get other members (not the current user)
+    const otherMembers = membersForDay.filter(
       m => m.user_id !== (selectedMemberId || user?.id)
+    );
+    const otherMembersCount = otherMembers.length;
+    
+    // Count how many other members have external events
+    const otherMembersWithExternalEvents = otherMembers.filter(member => 
+      memberExternalEvents.some(event => 
+        event.user_id === member.user_id && 
+        isSameDay(new Date(event.date), date)
+      )
     ).length;
+    
     const isGroupAvailable = groupAvailableDates.some(d => isSameDay(d, date));
     const isGroupNotAvailable = groupNotAvailableDates.some(d => isSameDay(d, date));
     const events = getEventsForDate(date);
     const hasEvent = events.length > 0;
+    
+    // Check if any member has external events
+    const hasMembersWithExternalEvents = currentUserHasExternalEvent || otherMembersWithExternalEvents > 0;
 
     return (
       <div
         className={`day-content ${isGroupAvailable ? 'group-available' : ''} ${
           isGroupNotAvailable ? 'group-not-available' : ''
-        } ${hasEvent ? 'has-event' : ''}`}
+        } ${hasEvent ? 'has-event' : ''} ${
+          hasMembersWithExternalEvents ? 'has-external-events' : ''
+        } ${selectedDay && isSameDay(date, selectedDay) ? 'selected-day bg-indigo-600 text-white' : ''}`}
       >
         <span>{date.getDate()}</span>
         {(isCurrentUserInvolved || otherMembersCount > 0 || hasEvent) && (
           <>
             <div className="availability-dots">
               {isCurrentUserInvolved && (
-                <div className="availability-dot you" />
+                <div className={`availability-dot you ${currentUserHasExternalEvent ? 'border border-orange-500 bg-orange-200' : ''}`} />
               )}
-              {[...Array(Math.min(otherMembersCount, 3))].map((_, i) => (
-                <div key={i} className="availability-dot others" />
-              ))}
+              {otherMembers.slice(0, 3).map((member, i) => {
+                const hasExternalEvent = memberExternalEvents.some(event => 
+                  event.user_id === member.user_id && 
+                  isSameDay(new Date(event.date), date)
+                );
+                return (
+                  <div key={i} className={`availability-dot others ${hasExternalEvent ? 'border border-orange-500 bg-orange-200' : ''}`} />
+                );
+              })}
             </div>
             <div className="day-tooltip">
               <div className="text-sm font-medium text-gray-900 mb-2">
@@ -564,6 +846,11 @@ useEffect(() => {
                       {events.length > 1 ? `${events[0].name} y ${events.length - 1} más` : events[0].name}
                     </span>
                   )}
+                  {hasMembersWithExternalEvents && (
+                    <span className="text-xs bg-orange-100 text-orange-800 px-2 py-0.5 rounded-full">
+                      {otherMembersWithExternalEvents + (currentUserHasExternalEvent ? 1 : 0)} miembro(s) con eventos externos
+                    </span>
+                  )}
                 </div>
               </div>
               {membersForDay.length > 0 && (
@@ -574,10 +861,12 @@ useEffect(() => {
                       .find(a => a.userId === member.user_id)
                       ?.dates.some(d => isSameDay(d, date)) ?? false;
 
-                    const hasExternalEvent = memberExternalEvents.some(event => 
+                    const memberHasExternalEvent = memberExternalEvents.some(event => 
                       event.user_id === member.user_id && 
                       isSameDay(new Date(event.date), date)
                     );
+                    
+                    // La información de eventos externos ya se muestra en el tooltip general
 
                     return (
                       <div
@@ -590,17 +879,17 @@ useEffect(() => {
                           <div className="flex items-center justify-between w-full">
                             <span className="font-medium">{member.name}</span>
                             <div className="flex items-center gap-2">
-                              {member.role_in_band === 'sustituto' && (
+                              {member.role_in_group === 'sustituto' && (
                                 <span className="text-xs bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded-full">
                                   Sustituto
                                 </span>
                               )}
-                              {isAvailable && !hasExternalEvent && (
+                              {isAvailable && !memberHasExternalEvent && (
                                 <span className="text-xs bg-green-100 text-green-800 px-1.5 py-0.5 rounded-full">
                                   Disponible
                                 </span>
                               )}
-                              {hasExternalEvent && (
+                              {memberHasExternalEvent && (
                                 <span className="text-xs bg-red-100 text-red-800 px-1.5 py-0.5 rounded-full">
                                   Con Evento
                                 </span>
@@ -729,11 +1018,11 @@ useEffect(() => {
             <select
               id="member-select"
               value={selectedMemberId || user?.id || ''}
-              onChange={(e) => setSelectedMemberId(e.target.value)}
+              onChange={(e) => setSelectedMemberId(e.target.value === user?.id ? null : e.target.value)}
               className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-md shadow-sm"
             >
               {members.map((member) => (
-                <option key={member.id} value={member.user_id}>
+                <option key={member.id} value={member.user_id || ''}>
                   {member.name} {member.user_id === user?.id ? '(Tú)' : ''}
                 </option>
               ))}
@@ -745,17 +1034,32 @@ useEffect(() => {
         </div>
       )}
 
-      <div className="flex justify-center relative bg-white rounded-lg shadow-sm p-4">
-        {saving && (
-          <div className="absolute inset-0 bg-white/50 flex items-center justify-center z-10 rounded-lg">
+      <style dangerouslySetInnerHTML={{ __html: dayPickerStyles }} />
+      <div 
+        ref={calendarContainerRef}
+        className="flex justify-center relative bg-white rounded-lg shadow-sm p-4 calendar-container" 
+      >
+        <div 
+          className={`fixed top-0 left-0 w-screen h-screen flex items-center justify-center z-50 ${(saving || isUpdatingCalendar) ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} 
+          style={{ transition: 'opacity 0.2s ease-in-out' }}
+        >
+          <div className="absolute inset-0 bg-black/20"></div>
+          <div className="bg-white p-4 rounded-lg shadow-lg z-10 flex items-center space-x-2">
             <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+            <span>Actualizando calendario...</span>
           </div>
-        )}
+        </div>
         <DayPicker
           mode="single"
           selected={selectedDay}
           onSelect={setSelectedDay}
           onDayClick={handleDayClick}
+          modifiersClassNames={{
+            selected: 'rdp-day_selected'
+          }}
+          classNames={{
+            day_selected: 'bg-indigo-600 text-white font-bold hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500'
+          }}
           fromDate={new Date()}
           components={{
             DayContent
@@ -765,12 +1069,30 @@ useEffect(() => {
         />
       </div>
 
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-lg font-medium">Calendario de Disponibilidad</h3>
+        <button
+          onClick={(e) => {
+            // Prevenir comportamiento por defecto que podría causar recarga
+            e.preventDefault();
+            
+            // Usar la función refreshCalendarData para actualizar los datos
+            refreshCalendarData();
+          }}
+          disabled={saving}
+          className={`px-3 py-1 text-sm ${saving ? 'bg-gray-100 cursor-not-allowed' : 'bg-blue-100 hover:bg-blue-200'} rounded-md flex items-center`}
+        >
+          <span className="mr-1">{saving ? '...' : '↻'}</span>
+          {saving ? 'Actualizando...' : 'Actualizar'}
+        </button>
+      </div>
+
       <div className="bg-white rounded-lg shadow-sm p-4">
         <h3 className="font-medium text-gray-900 mb-3">Legend:</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="flex items-center space-x-3 p-2 rounded-lg bg-gray-50">
-            <div className="w-4 h-4 rounded-full bg-indigo-600"></div>
-            <span className="text-sm text-gray-600">Your availability</span>
+            <div className="w-4 h-4 rounded-full bg-indigo-600 shadow-sm"></div>
+            <span className="text-sm text-gray-600">Tu disponibilidad</span>
           </div>
           <div className="flex items-center space-x-3 p-2 rounded-lg bg-gray-50">
             <div className="w-4 h-4 rounded-full bg-indigo-200"></div>
@@ -783,6 +1105,14 @@ useEffect(() => {
           <div className="flex items-center space-x-3 p-2 rounded-lg bg-gray-50">
             <div className="w-4 h-4 rounded-full bg-red-500"></div>
             <span className="text-sm text-gray-600">Event scheduled</span>
+          </div>
+          <div className="flex items-center space-x-3 p-2 rounded-lg bg-gray-50">
+            <div className="w-4 h-4 rounded-full border-2 border-orange-500 bg-orange-200"></div>
+            <span className="text-sm text-gray-600">Con evento externo</span>
+          </div>
+          <div className="flex items-center space-x-3 p-2 rounded-lg bg-gray-50">
+            <div className="w-4 h-4 rounded-full bg-indigo-400 text-white flex items-center justify-center text-xs font-bold">✓</div>
+            <span className="text-sm text-gray-600">Fecha seleccionada</span>
           </div>
         </div>
       </div>
