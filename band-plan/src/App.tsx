@@ -17,7 +17,7 @@ function App() {
 
   useEffect(() => {
     console.log('App mounted');
-    // Check active session
+    // Check active session test
     supabase.auth.getSession().then(({ data: { session } }) => {
       console.log('Initial session:', session);
       setSession(session);
