@@ -21,13 +21,26 @@ function App() {
   // Efecto para detectar tokens de recuperación en la URL
   useEffect(() => {
     // Detectar si hay un token de recuperación en la URL, independientemente de la ruta
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    const type = params.get('type');
     const hash = window.location.hash;
-    console.log('App: Verificando hash en URL:', hash);
     
-    if (hash.includes('access_token=') && hash.includes('type=recovery')) {
-      console.log('App: Token de recuperación detectado, redirigiendo a /reset-password');
-      // Redirigir a la página de reset manteniendo el hash con el token
-      // Usamos replace para evitar problemas con el historial
+    console.log('App: Verificando token en URL:', { 
+      token: token ? token.substring(0, 10) + '...' : null, 
+      type, 
+      hash: hash.length > 0 ? hash.substring(0, 20) + '...' : null 
+    });
+    
+    // Verificar token PKCE en parámetros de consulta
+    if (token && type === 'recovery' && window.location.pathname !== '/reset-password') {
+      console.log('App: Token PKCE de recuperación detectado, redirigiendo a /reset-password');
+      // Redirigir a la página de reset manteniendo los parámetros
+      window.location.replace(`/reset-password?token=${token}&type=${type}`);
+    }
+    // Verificar token en hash (formato alternativo)
+    else if (hash.includes('access_token=') && hash.includes('type=recovery') && window.location.pathname !== '/reset-password') {
+      console.log('App: Token hash de recuperación detectado, redirigiendo a /reset-password');
       window.location.replace('/reset-password' + hash);
     }
   }, []);

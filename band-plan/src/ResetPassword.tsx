@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import { useAuthStore } from './store/authStore';
 
@@ -8,36 +8,50 @@ export default function ResetPassword() {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(false);
+  const [canResetPassword, setCanResetPassword] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
   const { setUser, setSession } = useAuthStore();
 
-  // Efecto para verificar el token de recuperación
+  // Efecto para verificar la sesión y el token de recuperación
   useEffect(() => {
-    const checkRecoveryToken = async () => {
-      // Verificar si hay un token de recuperación en la URL
-      const hash = window.location.hash;
-      console.log('URL hash:', hash);
+    const checkAuthAndToken = async () => {
+      console.log('Verificando autenticación para reset de contraseña');
       
-      // Comprobamos si hay un token de acceso y si es de tipo recovery
-      const hasAccessToken = hash.includes('access_token=');
-      const isRecovery = hash.includes('type=recovery');
-      
-      console.log('Has access token:', hasAccessToken);
-      console.log('Is recovery flow:', isRecovery);
-      
-      if (hasAccessToken && isRecovery) {
-        // Es un flujo válido de recuperación de contraseña
-        console.log('Token de recuperación válido detectado');
-        // No hacemos nada, permitimos que el usuario vea el formulario
-      } else if (!resetSuccess) {
-        // No es un flujo válido de recuperación y no se ha completado un reset
-        console.log('No hay token de recuperación válido, redirigiendo al login');
+      try {
+        // Verificar si tenemos una sesión de Supabase activa
+        const { data } = await supabase.auth.getSession();
+        
+        // Verificar si hay un token en la URL (parámetros de consulta)
+        const params = new URLSearchParams(location.search);
+        const token = params.get('token');
+        const type = params.get('type');
+        
+        console.log('URL params:', { token: token?.substring(0, 10) + '...', type });
+        console.log('Sesión activa:', !!data.session);
+        
+        // Comprobar si estamos en un flujo de recuperación válido
+        if (token && type === 'recovery') {
+          console.log('Token de recuperación válido detectado en URL');
+          setCanResetPassword(true);
+        } else if (data.session) {
+          // Si hay una sesión activa y estamos en la página de reset, probablemente
+          // el usuario ya ha sido autenticado por Supabase automáticamente
+          console.log('Sesión activa detectada, permitiendo reset de contraseña');
+          setCanResetPassword(true);
+        } else if (!resetSuccess) {
+          // No hay token válido ni sesión activa
+          console.log('No hay token de recuperación válido ni sesión activa');
+          navigate('/login');
+        }
+      } catch (error) {
+        console.error('Error al verificar autenticación:', error);
         navigate('/login');
       }
     };
     
-    checkRecoveryToken();
-  }, [navigate, resetSuccess]);
+    checkAuthAndToken();
+  }, [location, navigate, resetSuccess]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,20 +90,32 @@ export default function ResetPassword() {
   return (
     <div style={{ maxWidth: 400, margin: 'auto', padding: 32 }}>
       <h2>Restablecer contraseña</h2>
-      <form onSubmit={handleSubmit}>
-        <input
-          type="password"
-          placeholder="Nueva contraseña"
-          value={password}
-          onChange={e => setPassword(e.target.value)}
-          required
-          style={{ width: '100%', marginBottom: 12, padding: 8 }}
-        />
-        <button type="submit" disabled={loading} style={{ width: '100%' }}>
-          {loading ? 'Actualizando...' : 'Actualizar contraseña'}
-        </button>
-      </form>
-      {message && <p style={{ marginTop: 16 }}>{message}</p>}
+      
+      {canResetPassword ? (
+        <form onSubmit={handleSubmit}>
+          <input
+            type="password"
+            placeholder="Nueva contraseña"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            required
+            style={{ width: '100%', marginBottom: 12, padding: 8 }}
+          />
+          <button type="submit" disabled={loading} style={{ width: '100%' }}>
+            {loading ? 'Actualizando...' : 'Actualizar contraseña'}
+          </button>
+          {message && <p style={{ marginTop: 16 }}>{message}</p>}
+        </form>
+      ) : (
+        <div>
+          <p style={{ marginBottom: 16 }}>
+            Esperando verificación del token de recuperación...
+          </p>
+          <p style={{ fontSize: '0.9em', color: '#666' }}>
+            Si no eres redirigido automáticamente, solicita un nuevo enlace de recuperación.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
