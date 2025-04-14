@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { supabase } from './lib/supabase';
@@ -11,6 +11,11 @@ import GroupManagement from './pages/GroupManagement';
 import ProtectedRoute from './components/ProtectedRoute';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import AcceptInvitation from './pages/AcceptInvitation';
+import ResetPassword from './pages/ResetPassword';
+import UpdatePassword from './pages/UpdatePassword';
+import ManualPasswordReset from './pages/ManualPasswordReset';
+import PasswordRecoveryRedirect from './pages/PasswordRecoveryRedirect';
+import PasswordRecoveryDetector from './components/PasswordRecoveryDetector';
 
 function App() {
   const { setUser, setSession } = useAuthStore();
@@ -39,11 +44,21 @@ function App() {
   return (
     <Router>
       <div className="min-h-screen bg-gray-50">
+        {/* Detector de enlaces de recuperación de contraseña */}
+        <PasswordRecoveryDetector />
         <Navbar />
         <main className="container mx-auto px-4 py-8">
           <Routes>
+            {/* Rutas para manejar la recuperación de contraseña - mayor prioridad */}
+            <Route path="/**" element={<PasswordRecoveryRedirect />} />
+            <Route path="/recovery" element={<ManualPasswordReset />} />
+            
+            {/* Rutas estándar de la aplicación */}
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/update-password" element={<UpdatePassword />} />
+            <Route path="/update-password-manual" element={<ManualPasswordReset />} />
             <Route path="/accept-invitation" element={<AcceptInvitation />} />
             <Route path="/" element={
               <ProtectedRoute>
