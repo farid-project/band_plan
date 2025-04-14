@@ -82,6 +82,14 @@ export default function Login() {
             placeholder="••••••••"
           />
 
+          <div className="flex items-center justify-between">
+            <div className="text-sm">
+              <Link to="/reset-password" className="text-indigo-600 hover:text-indigo-500">
+                ¿Olvidaste tu contraseña?
+              </Link>
+            </div>
+          </div>
+
           <Button type="submit" loading={loading} fullWidth>
             Sign In
           </Button>
