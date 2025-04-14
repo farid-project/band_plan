@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import { supabase } from '../lib/supabase';
+import { toast } from 'react-hot-toast';
 import Dashboard from '../pages/Dashboard';
 
 export default function PasswordResetHandler() {
@@ -14,15 +16,28 @@ export default function PasswordResetHandler() {
     const code = searchParams.get('code');
     
     if (code) {
-      // Instead of trying to verify the token, let's redirect to a custom page
-      // that handles password reset in a simpler way
-      console.log('Code detected in URL, redirecting to manual password reset page');
+      console.log('Code detected in URL, handling password reset');
       
-      // Redirect to a simplified password reset page
-      navigate('/update-password-manual', { 
-        replace: true,
-        state: { resetCode: code }
-      });
+      // Supabase automáticamente inicia sesión cuando usas el enlace 
+      // Desconectamos al usuario primero y luego redirigimos
+      const handleResetFlow = async () => {
+        try {
+          // Forzar cierre de sesión primero para evitar inicio de sesión automático
+          await supabase.auth.signOut();
+          
+          // Redirigir a la página manual de restablecimiento
+          navigate('/update-password-manual', { 
+            replace: true,
+            state: { resetCode: code }
+          });
+        } catch (err) {
+          console.error('Error preparing reset flow:', err);
+          toast.error('Error al preparar el flujo de recuperación');
+          navigate('/login', { replace: true });
+        }
+      };
+      
+      handleResetFlow();
       return;
     }
     
