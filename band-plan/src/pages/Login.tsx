@@ -82,13 +82,6 @@ export default function Login() {
             placeholder="••••••••"
           />
 
-          <div className="flex items-center justify-between">
-            <div className="text-sm">
-              <Link to="/reset-password" className="text-indigo-600 hover:text-indigo-500">
-                ¿Olvidaste tu contraseña?
-              </Link>
-            </div>
-          </div>
 
           <Button type="submit" loading={loading} fullWidth>
             Sign In
@@ -96,6 +89,11 @@ export default function Login() {
         </form>
 
         <p className="mt-4 text-center text-sm text-gray-600">
+          <Link to="/forgot-password" className="text-indigo-600 hover:text-indigo-500">
+            ¿Olvidaste tu contraseña?
+          </Link>
+        </p>
+        <p className="mt-2 text-center text-sm text-gray-600">
           Don't have an account?{' '}
           <Link to="/register" className="text-indigo-600 hover:text-indigo-500">
             Register here
