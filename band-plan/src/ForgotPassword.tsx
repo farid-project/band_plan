@@ -11,7 +11,7 @@ export default function ForgotPassword() {
     setLoading(true);
     setMessage('');
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin + '/reset-password',
+      redirectTo: 'https://bandplan.netlify.app/reset-password',
     });
     setLoading(false);
     if (error) {

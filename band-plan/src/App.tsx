@@ -18,6 +18,15 @@ import ResetPassword from './ResetPassword';
 function App() {
   const { setUser, setSession } = useAuthStore();
 
+  // Efecto para detectar tokens de recuperación en la URL
+  useEffect(() => {
+    // Detectar si estamos en la ruta raíz y hay un token de recuperación
+    if (window.location.pathname === '/' && window.location.hash.includes('type=recovery')) {
+      // Redirigir a la página de reset manteniendo el hash con el token
+      window.location.href = '/reset-password' + window.location.hash;
+    }
+  }, []);
+
   useEffect(() => {
     console.log('App mounted');
     // Check active session test

@@ -1,12 +1,35 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
+import { useAuthStore } from './store/authStore';
 
 export default function ResetPassword() {
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
   const navigate = useNavigate();
+  const { setUser, setSession } = useAuthStore();
+
+  // Efecto para forzar el cierre de sesión inmediatamente al montar el componente
+  useEffect(() => {
+    const forceSignOut = async () => {
+      // Verificar si hay un token de recuperación en la URL
+      const hash = window.location.hash;
+      const isRecovery = hash.includes('type=recovery');
+      
+      if (isRecovery) {
+        // No cerramos sesión aquí porque necesitamos el token para actualizar la contraseña
+        console.log('Flujo de recuperación de contraseña detectado');
+      } else if (!resetSuccess) {
+        // Si no es un flujo de recuperación y no se ha completado un reset exitoso,
+        // redirigir al login
+        navigate('/login');
+      }
+    };
+    
+    forceSignOut();
+  }, [navigate, resetSuccess]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,16 +44,20 @@ export default function ResetPassword() {
         throw error;
       }
       
-      setMessage('¡Contraseña actualizada correctamente!');
+      setResetSuccess(true);
+      setMessage('¡Contraseña actualizada correctamente! Cerrando sesión...');
       
-      // Cerrar sesión después de actualizar la contraseña
-      setTimeout(async () => {
-        await supabase.auth.signOut();
-        // Redirigir al login después de 2 segundos
-        setTimeout(() => {
-          navigate('/login');
-        }, 2000);
-      }, 1000);
+      // Cierre de sesión inmediato y completo
+      await supabase.auth.signOut();
+      
+      // Limpiar el estado de autenticación en la store
+      setUser(null);
+      setSession(null);
+      
+      // Redirigir después de un breve retraso
+      setTimeout(() => {
+        navigate('/login', { replace: true });
+      }, 2000);
     } catch (error: any) {
       setMessage('Error: ' + error.message);
     } finally {
