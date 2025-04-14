@@ -11,24 +11,32 @@ export default function ResetPassword() {
   const navigate = useNavigate();
   const { setUser, setSession } = useAuthStore();
 
-  // Efecto para forzar el cierre de sesión inmediatamente al montar el componente
+  // Efecto para verificar el token de recuperación
   useEffect(() => {
-    const forceSignOut = async () => {
+    const checkRecoveryToken = async () => {
       // Verificar si hay un token de recuperación en la URL
       const hash = window.location.hash;
+      console.log('URL hash:', hash);
+      
+      // Comprobamos si hay un token de acceso y si es de tipo recovery
+      const hasAccessToken = hash.includes('access_token=');
       const isRecovery = hash.includes('type=recovery');
       
-      if (isRecovery) {
-        // No cerramos sesión aquí porque necesitamos el token para actualizar la contraseña
-        console.log('Flujo de recuperación de contraseña detectado');
+      console.log('Has access token:', hasAccessToken);
+      console.log('Is recovery flow:', isRecovery);
+      
+      if (hasAccessToken && isRecovery) {
+        // Es un flujo válido de recuperación de contraseña
+        console.log('Token de recuperación válido detectado');
+        // No hacemos nada, permitimos que el usuario vea el formulario
       } else if (!resetSuccess) {
-        // Si no es un flujo de recuperación y no se ha completado un reset exitoso,
-        // redirigir al login
+        // No es un flujo válido de recuperación y no se ha completado un reset
+        console.log('No hay token de recuperación válido, redirigiendo al login');
         navigate('/login');
       }
     };
     
-    forceSignOut();
+    checkRecoveryToken();
   }, [navigate, resetSuccess]);
 
   const handleSubmit = async (e: React.FormEvent) => {

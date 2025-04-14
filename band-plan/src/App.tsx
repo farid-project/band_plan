@@ -20,10 +20,15 @@ function App() {
 
   // Efecto para detectar tokens de recuperación en la URL
   useEffect(() => {
-    // Detectar si estamos en la ruta raíz y hay un token de recuperación
-    if (window.location.pathname === '/' && window.location.hash.includes('type=recovery')) {
+    // Detectar si hay un token de recuperación en la URL, independientemente de la ruta
+    const hash = window.location.hash;
+    console.log('App: Verificando hash en URL:', hash);
+    
+    if (hash.includes('access_token=') && hash.includes('type=recovery')) {
+      console.log('App: Token de recuperación detectado, redirigiendo a /reset-password');
       // Redirigir a la página de reset manteniendo el hash con el token
-      window.location.href = '/reset-password' + window.location.hash;
+      // Usamos replace para evitar problemas con el historial
+      window.location.replace('/reset-password' + hash);
     }
   }, []);
 
