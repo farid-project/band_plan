@@ -1,21 +1,40 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 
 export default function ResetPassword() {
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setMessage('');
-    const { error } = await supabase.auth.updateUser({ password });
-    setLoading(false);
-    if (error) {
+    
+    try {
+      // Actualizar la contraseña
+      const { error } = await supabase.auth.updateUser({ password });
+      
+      if (error) {
+        throw error;
+      }
+      
+      setMessage('¡Contraseña actualizada correctamente!');
+      
+      // Cerrar sesión después de actualizar la contraseña
+      setTimeout(async () => {
+        await supabase.auth.signOut();
+        // Redirigir al login después de 2 segundos
+        setTimeout(() => {
+          navigate('/login');
+        }, 2000);
+      }, 1000);
+    } catch (error: any) {
       setMessage('Error: ' + error.message);
-    } else {
-      setMessage('¡Contraseña actualizada! Ya puedes iniciar sesión.');
+    } finally {
+      setLoading(false);
     }
   };
 
