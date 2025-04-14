@@ -14,7 +14,7 @@ import AcceptInvitation from './pages/AcceptInvitation';
 import ResetPassword from './pages/ResetPassword';
 import UpdatePassword from './pages/UpdatePassword';
 import ManualPasswordReset from './pages/ManualPasswordReset';
-import PasswordResetHandler from './components/PasswordResetHandler';
+import PasswordRecoveryRedirect from './pages/PasswordRecoveryRedirect';
 
 function App() {
   const { setUser, setSession } = useAuthStore();
@@ -46,13 +46,15 @@ function App() {
         <Navbar />
         <main className="container mx-auto px-4 py-8">
           <Routes>
-            <Route path="/" element={<PasswordResetHandler />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/update-password" element={<UpdatePassword />} />
             <Route path="/update-password-manual" element={<ManualPasswordReset />} />
             <Route path="/accept-invitation" element={<AcceptInvitation />} />
+            {/* Rutas para manejar la recuperación de contraseña */}
+            <Route path="/recovery" element={<ManualPasswordReset />} />
+            <Route path="/**" element={<PasswordRecoveryRedirect />} />
             <Route path="/" element={
               <ProtectedRoute>
                 <Dashboard />

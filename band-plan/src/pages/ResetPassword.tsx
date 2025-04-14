@@ -16,8 +16,12 @@ export default function ResetPassword() {
     setSuccessMessage('');
 
     try {
+      // Usamos la ruta específica para recuperación
+      // Usamos la URL del proxy de vista previa para pruebas locales
+      const redirectUrl = 'http://127.0.0.1:54582/recovery';
+        
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: window.location.origin + '/login',
+        redirectTo: redirectUrl,
       });
 
       if (error) throw error;
