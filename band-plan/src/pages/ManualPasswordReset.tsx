@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { supabase } from '../lib/supabase';
 import Input from '../components/Input';
@@ -11,21 +11,32 @@ export default function ManualPasswordReset() {
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState('');
   const navigate = useNavigate();
-  const location = useLocation();
   const [isProcessingReset, setIsProcessingReset] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(false);
+  // El estado resetSuccess ya indica si tenemos un token válido
 
-  // Verificar si hay un código de recuperación en la URL
+  // Verificar si hay un token de recuperación guardado
   useEffect(() => {
-    const handleRecoveryCode = async () => {
-      // Si estamos en la ruta /recovery, significa que venimos del enlace de recuperación
-      if (location.pathname === '/recovery') {
-        const searchParams = new URLSearchParams(location.search);
+    const storedToken = localStorage.getItem('recovery_token');
+    console.log('Token de recuperación encontrado:', storedToken ? 'Sí' : 'No');
+    
+    if (storedToken) {
+      // Token válido encontrado
+      setResetSuccess(true);
+      toast.success('Ahora puedes cambiar tu contraseña');
+      
+      // Limpiar el token después de usarlo
+      localStorage.removeItem('recovery_token');
+    } else {
+      // Intentar verificar si hay un código en la URL (método alternativo)
+      const handleRecoveryCode = async () => {
+        const searchParams = new URLSearchParams(window.location.search);
         const code = searchParams.get('code');
         
         if (code) {
           setIsProcessingReset(true);
           try {
+            console.log('Intentando verificar código de recuperación:', code);
             // Intentar usar el código para establecer una sesión
             const { error } = await supabase.auth.verifyOtp({
               token_hash: code,
@@ -33,6 +44,7 @@ export default function ManualPasswordReset() {
             });
             
             if (error) {
+              console.error('Error al verificar OTP:', error);
               toast.error('El código de recuperación no es válido o ha expirado');
               setIsProcessingReset(false);
               return;
@@ -48,11 +60,11 @@ export default function ManualPasswordReset() {
             setIsProcessingReset(false);
           }
         }
-      }
-    };
-    
-    handleRecoveryCode();
-  }, [location]);
+      };
+      
+      handleRecoveryCode();
+    }
+  }, []);
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();

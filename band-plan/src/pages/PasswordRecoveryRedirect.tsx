@@ -14,21 +14,52 @@ export default function PasswordRecoveryRedirect() {
   const [isExpired, setIsExpired] = useState(false);
 
   useEffect(() => {
+    console.log('PasswordRecoveryRedirect - URL actual:', window.location.href);
+    
+    // Prevenir cualquier redirección automática de Supabase
+    const preventRedirect = () => {
+      // Esta función intenta detener cualquier redirección automática
+      history.pushState(null, '', window.location.href);
+    };
+    
+    window.addEventListener('beforeunload', preventRedirect);
+    
     // Verificar si hay un error en la URL
     const searchParams = new URLSearchParams(location.search);
     const hashParams = new URLSearchParams(location.hash.replace('#', ''));
     
     const urlError = searchParams.get('error') || hashParams.get('error');
     const errorCode = searchParams.get('error_code') || hashParams.get('error_code');
+    const token = searchParams.get('token') || hashParams.get('token');
+    const type = searchParams.get('type') || hashParams.get('type');
+    
+    console.log('Parámetros detectados:', { urlError, errorCode, token, type });
     
     if (urlError === 'access_denied' || errorCode === 'otp_expired') {
       setIsExpired(true);
       toast.error('El enlace de recuperación ha expirado o no es válido');
+    } else if (token && type === 'recovery') {
+      // Si tenemos un token válido de recuperación
+      toast.success('Procesando solicitud de recuperación de contraseña...');
+      
+      // Guardar el token en localStorage para usarlo en la página de recuperación
+      localStorage.setItem('recovery_token', token);
+      
+      // Redirigir a la página de recuperación manual
+      setTimeout(() => {
+        navigate('/update-password-manual', { replace: true });
+      }, 500);
     } else {
-      // Si no hay error, redirigir a la página de recuperación manual
-      toast.success('Redirigiendo a la página de recuperación de contraseña...');
-      navigate('/update-password-manual', { replace: true });
+      // Si no hay parámetros claros, mostrar la página de recuperación manual
+      toast.success('Iniciando proceso de recuperación de contraseña...');
+      setTimeout(() => {
+        navigate('/update-password-manual', { replace: true });
+      }, 500);
     }
+    
+    return () => {
+      window.removeEventListener('beforeunload', preventRedirect);
+    };
   }, [navigate, location]);
 
   if (isExpired) {
