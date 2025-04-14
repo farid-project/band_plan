@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import { useAuthStore } from './store/authStore';
+import Input from './components/Input';
+import Button from './components/Button';
 
 export default function ResetPassword() {
   const [password, setPassword] = useState('');
@@ -88,34 +90,52 @@ export default function ResetPassword() {
   };
 
   return (
-    <div style={{ maxWidth: 400, margin: 'auto', padding: 32 }}>
-      <h2>Restablecer contraseña</h2>
-      
-      {canResetPassword ? (
-        <form onSubmit={handleSubmit}>
-          <input
-            type="password"
-            placeholder="Nueva contraseña"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            required
-            style={{ width: '100%', marginBottom: 12, padding: 8 }}
-          />
-          <button type="submit" disabled={loading} style={{ width: '100%' }}>
-            {loading ? 'Actualizando...' : 'Actualizar contraseña'}
-          </button>
-          {message && <p style={{ marginTop: 16 }}>{message}</p>}
-        </form>
-      ) : (
-        <div>
-          <p style={{ marginBottom: 16 }}>
-            Esperando verificación del token de recuperación...
-          </p>
-          <p style={{ fontSize: '0.9em', color: '#666' }}>
-            Si no eres redirigido automáticamente, solicita un nuevo enlace de recuperación.
-          </p>
-        </div>
-      )}
+    <div className="max-w-md mx-auto mt-16">
+      <div className="bg-white p-8 rounded-xl shadow-lg">
+        <h2 className="text-2xl font-bold text-center text-gray-900 mb-8">
+          Restablecer contraseña
+        </h2>
+        
+        {canResetPassword ? (
+          <>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              <Input
+                label="Nueva contraseña"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                placeholder="••••••••"
+              />
+              
+              <Button type="submit" loading={loading} fullWidth>
+                Actualizar contraseña
+              </Button>
+            </form>
+            
+            {message && (
+              <div className={`mt-4 p-3 rounded-lg ${message.includes('Error') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                {message}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="py-6 text-center">
+            <div className="animate-pulse inline-block p-3 mb-4 rounded-full bg-indigo-100">
+              <svg className="w-6 h-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+            <p className="text-gray-700 mb-2">
+              Verificando token de recuperación...
+            </p>
+            <p className="text-sm text-gray-500">
+              Si no eres redirigido automáticamente, solicita un 
+              <Link to="/forgot-password" className="text-indigo-600 hover:text-indigo-500"> nuevo enlace</Link>.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,5 +1,8 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from './lib/supabase';
+import Input from './components/Input';
+import Button from './components/Button';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -22,22 +25,39 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div style={{ maxWidth: 400, margin: 'auto', padding: 32 }}>
-      <h2>¿Olvidaste tu contraseña?</h2>
-      <form onSubmit={handleSubmit}>
-        <input
-          type="email"
-          placeholder="Tu email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
-          required
-          style={{ width: '100%', marginBottom: 12, padding: 8 }}
-        />
-        <button type="submit" disabled={loading} style={{ width: '100%' }}>
-          {loading ? 'Enviando...' : 'Enviar enlace'}
-        </button>
-      </form>
-      {message && <p style={{ marginTop: 16 }}>{message}</p>}
+    <div className="max-w-md mx-auto mt-16">
+      <div className="bg-white p-8 rounded-xl shadow-lg">
+        <h2 className="text-2xl font-bold text-center text-gray-900 mb-8">
+          ¿Olvidaste tu contraseña?
+        </h2>
+        
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <Input
+            label="Email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            placeholder="tu@email.com"
+          />
+          
+          <Button type="submit" loading={loading} fullWidth>
+            Enviar enlace
+          </Button>
+        </form>
+        
+        {message && (
+          <div className={`mt-4 p-3 rounded-lg ${message.includes('Error') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
+            {message}
+          </div>
+        )}
+        
+        <p className="mt-4 text-center text-sm text-gray-600">
+          <Link to="/login" className="text-indigo-600 hover:text-indigo-500">
+            Volver al login
+          </Link>
+        </p>
+      </div>
     </div>
   );
 }
