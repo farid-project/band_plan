@@ -15,6 +15,7 @@ import ResetPassword from './pages/ResetPassword';
 import UpdatePassword from './pages/UpdatePassword';
 import ManualPasswordReset from './pages/ManualPasswordReset';
 import PasswordRecoveryRedirect from './pages/PasswordRecoveryRedirect';
+import PasswordRecoveryDetector from './components/PasswordRecoveryDetector';
 
 function App() {
   const { setUser, setSession } = useAuthStore();
@@ -43,6 +44,8 @@ function App() {
   return (
     <Router>
       <div className="min-h-screen bg-gray-50">
+        {/* Detector de enlaces de recuperación de contraseña */}
+        <PasswordRecoveryDetector />
         <Navbar />
         <main className="container mx-auto px-4 py-8">
           <Routes>
