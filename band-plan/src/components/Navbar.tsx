@@ -47,12 +47,14 @@ export default function Navbar() {
                 <Link to="/register" className="hover:text-indigo-200 transition-colors">
                   Register
                 </Link>
-                <Link 
-                  to="/accept-invitation?token=test&member_id=test" 
-                  className="text-sm font-medium text-gray-700 hover:text-gray-900"
-                >
-                  Test Invitation
-                </Link>
+                {import.meta.env.DEV && (
+                  <Link 
+                    to="/accept-invitation?token=test&member_id=test" 
+                    className="text-sm font-medium text-gray-700 hover:text-gray-900"
+                  >
+                    Test Invitation
+                  </Link>
+                )}
               </div>
             )}
           </div>
