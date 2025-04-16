@@ -1,17 +1,18 @@
+
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
 import Button from './Button';
 import Input from './Input';
 import { X, Music } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { GroupMember, Instrument } from '../types';
+import { GroupMember } from '../types';
 import { useAuthStore } from '../store/authStore';
+import { supabase } from '../lib/supabase';
 
 interface EditMemberModalProps {
   isOpen: boolean;
   onClose: () => void;
-  member: GroupMember & { instruments: { id: string; name: string; }[] };
-  instruments: Instrument[];
+  member: GroupMember & { instruments: { id: string; name: string; }[] }; // Mantener 'instruments' para compatibilidad
+  instruments: { id: string; name: string; }[]; // Mantener 'instruments' para compatibilidad
   onMemberUpdated: () => void;
   userRole: 'admin' | 'user' | null;
 }
@@ -20,13 +21,13 @@ export default function EditMemberModal({
   isOpen,
   onClose,
   member,
-  instruments: availableInstruments,
+  instruments: availableRoles, // Renombrar internamente a 'availableRoles'
   onMemberUpdated,
   userRole
 }: EditMemberModalProps) {
   const [name, setName] = useState(member.name);
   const [role, setRole] = useState(member.role_in_group);
-  const [selectedInstruments, setSelectedInstruments] = useState<string[]>([]);
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const { user } = useAuthStore();
 
@@ -34,7 +35,7 @@ export default function EditMemberModal({
     if (member) {
       setName(member.name);
       setRole(member.role_in_group);
-      setSelectedInstruments(member.instruments.map(i => i.id));
+      setSelectedRoles(member.instruments.map(i => i.id)); // Usar 'instruments' del miembro como roles
     }
   }, [member]);
 
@@ -54,8 +55,8 @@ export default function EditMemberModal({
       return;
     }
 
-    if (selectedInstruments.length === 0) {
-      toast.error('Please select at least one instrument');
+    if (selectedRoles.length === 0) {
+      toast.error('Please select at least one role');
       return;
     }
 
@@ -73,21 +74,21 @@ export default function EditMemberModal({
 
       if (updateError) throw updateError;
 
-      // Remove all existing instrument associations
+      // Remove all existing role associations
       const { error: deleteError } = await supabase
-        .from('group_member_instruments')
+        .from('group_member_roles')
         .delete()
         .eq('group_member_id', member.id);
 
       if (deleteError) throw deleteError;
 
-      // Add new instrument associations
+      // Add new role associations
       const { error: insertError } = await supabase
-        .from('group_member_instruments')
+        .from('group_member_roles')
         .insert(
-          selectedInstruments.map(instrumentId => ({
+          selectedRoles.map(roleId => ({
             group_member_id: member.id,
-            instrument_id: instrumentId,
+            role_id: roleId,
             created_by: user.id
           }))
         );
@@ -106,13 +107,14 @@ export default function EditMemberModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg w-full max-w-md">
         <div className="flex justify-between items-center p-6 border-b">
           <h2 className="text-xl font-semibold">Edit Member</h2>
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-gray-700"
+            disabled={loading}
           >
             <X className="w-5 h-5" />
           </button>
@@ -147,27 +149,27 @@ export default function EditMemberModal({
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Instruments
+              Roles
             </label>
             <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-3">
-              {availableInstruments.map((instrument) => (
-                <label key={instrument.id} className="flex items-center space-x-2 hover:bg-gray-50 p-1 rounded">
+              {availableRoles.map((role) => (
+                <label key={role.id} className="flex items-center space-x-2 hover:bg-gray-50 p-1 rounded">
                   <input
                     type="checkbox"
-                    checked={selectedInstruments.includes(instrument.id)}
+                    checked={selectedRoles.includes(role.id)}
                     onChange={(e) => {
                       if (e.target.checked) {
-                        setSelectedInstruments([...selectedInstruments, instrument.id]);
+                        setSelectedRoles([...selectedRoles, role.id]);
                       } else {
-                        setSelectedInstruments(selectedInstruments.filter(id => id !== instrument.id));
+                        setSelectedRoles(selectedRoles.filter(id => id !== role.id));
                       }
                     }}
                     className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                    disabled={!canEdit}
+                    disabled={loading || !canEdit}
                   />
                   <span className="flex items-center">
                     <Music className="w-3 h-3 mr-1" />
-                    {instrument.name}
+                    {role.name}
                   </span>
                 </label>
               ))}

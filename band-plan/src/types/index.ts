@@ -11,6 +11,11 @@ export interface Group {
   created_by: string;
 }
 
+export interface Role {
+  id: string;
+  name: string;
+}
+
 export interface GroupMember {
   id: string;
   group_id: string;
@@ -18,22 +23,22 @@ export interface GroupMember {
   name: string;
   role_in_group: 'principal' | 'sustituto';
   created_by: string;
-  instruments: { id: string; name: string; }[];
+  roles?: Role[];
   sync_calendar?: boolean;
   calendar_url?: string;
   calendar_updated_at?: string;
 }
 
-export interface Instrument {
-  id: string;
-  name: string;
+export interface GroupMemberRole {
+  id: number;
+  group_member_id: string;
+  role_id: string;
   created_by: string;
 }
 
-export interface GroupMemberInstrument {
-  id: number;
-  group_member_id: string;
-  instrument_id: string;
+export interface Instrument {
+  id: string;
+  name: string;
   created_by: string;
 }
 
