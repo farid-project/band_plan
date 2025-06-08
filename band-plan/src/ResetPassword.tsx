@@ -24,17 +24,62 @@ export default function ResetPassword() {
         // Verificar si tenemos una sesión de Supabase activa
         const { data } = await supabase.auth.getSession();
         
-        // Verificar si hay un token en la URL (parámetros de consulta)
+        // Verificar si hay un token o código en la URL (parámetros de consulta)
         const params = new URLSearchParams(location.search);
         const token = params.get('token');
         const type = params.get('type');
+        const code = params.get('code');
         
-        console.log('URL params:', { token: token?.substring(0, 10) + '...', type });
+        // También verificar si hay tokens guardados en localStorage
+        const storedToken = localStorage.getItem('recovery_token');
+        const storedCode = localStorage.getItem('recovery_code');
+        
+        console.log('URL params:', { 
+          token: token?.substring(0, 10) + '...', 
+          type,
+          code: code?.substring(0, 10) + '...' 
+        });
         console.log('Sesión activa:', !!data.session);
+        console.log('Token almacenado:', !!storedToken);
+        console.log('Código almacenado:', !!storedCode);
         
-        // Comprobar si estamos en un flujo de recuperación válido
+        // Intentar verificar el código OTP si está presente
+        if (code) {
+          console.log('Código OTP detectado en URL, intentando verificar');
+          try {
+            const { error } = await supabase.auth.verifyOtp({
+              token_hash: code,
+              type: 'recovery'
+            });
+            
+            if (!error) {
+              console.log('Código OTP verificado correctamente');
+              localStorage.setItem('recovery_code', code);
+              setCanResetPassword(true);
+              return;
+            } else {
+              console.error('Error al verificar OTP:', error);
+            }
+          } catch (otpError) {
+            console.error('Error al procesar OTP:', otpError);
+          }
+        }
+        
+        // Si hay un código guardado, intentar usarlo
+        if (storedCode) {
+          console.log('Código de recuperación encontrado en localStorage');
+          setCanResetPassword(true);
+          return;
+        }
+        
+        // Comprobar si estamos en un flujo de recuperación válido con token
         if (token && type === 'recovery') {
           console.log('Token de recuperación válido detectado en URL');
+          // Guardar el token para uso posterior si el usuario no completa el proceso
+          localStorage.setItem('recovery_token', token);
+          setCanResetPassword(true);
+        } else if (storedToken) {
+          console.log('Token de recuperación encontrado en localStorage');
           setCanResetPassword(true);
         } else if (data.session) {
           // Si hay una sesión activa y estamos en la página de reset, probablemente
@@ -70,6 +115,10 @@ export default function ResetPassword() {
       
       setResetSuccess(true);
       setMessage('¡Contraseña actualizada correctamente! Cerrando sesión...');
+      
+      // Eliminar todos los tokens de recuperación almacenados solo después de un cambio exitoso
+      localStorage.removeItem('recovery_token');
+      localStorage.removeItem('recovery_code');
       
       // Cierre de sesión inmediato y completo
       await supabase.auth.signOut();

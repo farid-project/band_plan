@@ -25,8 +25,8 @@ export default function ManualPasswordReset() {
       setResetSuccess(true);
       toast.success('Ahora puedes cambiar tu contraseña');
       
-      // Limpiar el token después de usarlo
-      localStorage.removeItem('recovery_token');
+      // No eliminamos el token aquí para permitir múltiples intentos
+      // Solo se eliminará después de un cambio exitoso de contraseña
     } else {
       // Intentar verificar si hay un código en la URL (método alternativo)
       const handleRecoveryCode = async () => {
@@ -93,6 +93,9 @@ export default function ManualPasswordReset() {
         if (error) throw error;
 
         toast.success('Tu contraseña ha sido actualizada correctamente');
+        
+        // Eliminar el token de recuperación solo después de un cambio exitoso
+        localStorage.removeItem('recovery_token');
         
         // Cerrar sesión para forzar un nuevo inicio de sesión con la nueva contraseña
         await supabase.auth.signOut();

@@ -24,24 +24,44 @@ function App() {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token');
     const type = params.get('type');
+    const code = params.get('code');
     const hash = window.location.hash;
     
     console.log('App: Verificando token en URL:', { 
       token: token ? token.substring(0, 10) + '...' : null, 
-      type, 
+      type,
+      code: code ? code.substring(0, 10) + '...' : null,
       hash: hash.length > 0 ? hash.substring(0, 20) + '...' : null 
     });
+    
+    // Guardar cualquier token de recuperación para uso posterior
+    if (token && type === 'recovery') {
+      console.log('App: Guardando token de recuperación en localStorage');
+      localStorage.setItem('recovery_token', token);
+    }
+    
+    // Verificar código de recuperación (formato común de Supabase)
+    if (code && window.location.pathname !== '/reset-password') {
+      console.log('App: Código de recuperación detectado, redirigiendo a /reset-password');
+      localStorage.setItem('recovery_code', code);
+      // Redirigir a la página de reset manteniendo los parámetros
+      window.location.replace(`/reset-password?code=${code}`);
+      return;
+    }
     
     // Verificar token PKCE en parámetros de consulta
     if (token && type === 'recovery' && window.location.pathname !== '/reset-password') {
       console.log('App: Token PKCE de recuperación detectado, redirigiendo a /reset-password');
       // Redirigir a la página de reset manteniendo los parámetros
       window.location.replace(`/reset-password?token=${token}&type=${type}`);
+      return;
     }
+    
     // Verificar token en hash (formato alternativo)
-    else if (hash.includes('access_token=') && hash.includes('type=recovery') && window.location.pathname !== '/reset-password') {
+    if (hash.includes('access_token=') && hash.includes('type=recovery') && window.location.pathname !== '/reset-password') {
       console.log('App: Token hash de recuperación detectado, redirigiendo a /reset-password');
       window.location.replace('/reset-password' + hash);
+      return;
     }
   }, []);
 

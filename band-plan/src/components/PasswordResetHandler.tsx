@@ -22,6 +22,10 @@ export default function PasswordResetHandler() {
       // Desconectamos al usuario primero y luego redirigimos
       const handleResetFlow = async () => {
         try {
+          // Guardar el código de recuperación en localStorage para permitir múltiples intentos
+          localStorage.setItem('recovery_token', code);
+          console.log('Código de recuperación guardado en localStorage');
+          
           // Forzar cierre de sesión primero para evitar inicio de sesión automático
           await supabase.auth.signOut();
           
