@@ -13,58 +13,76 @@ export default function ManualPasswordReset() {
   const navigate = useNavigate();
   const [isProcessingReset, setIsProcessingReset] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(false);
-  // El estado resetSuccess ya indica si tenemos un token válido
 
-  // Verificar si hay un token de recuperación guardado
   useEffect(() => {
-    const storedToken = localStorage.getItem('recovery_token');
-    console.log('Token de recuperación encontrado:', storedToken ? 'Sí' : 'No');
-    
-    if (storedToken) {
-      // Token válido encontrado
-      setResetSuccess(true);
-      toast.success('Ahora puedes cambiar tu contraseña');
+    const checkRecoveryTokens = async () => {
+      // Verificar si hay un código de recuperación en localStorage
+      const storedToken = localStorage.getItem('recovery_token');
+      const storedCode = localStorage.getItem('recovery_code');
       
-      // No eliminamos el token aquí para permitir múltiples intentos
-      // Solo se eliminará después de un cambio exitoso de contraseña
-    } else {
-      // Intentar verificar si hay un código en la URL (método alternativo)
-      const handleRecoveryCode = async () => {
-        const searchParams = new URLSearchParams(window.location.search);
-        const code = searchParams.get('code');
+      console.log('ManualPasswordReset: Verificando tokens almacenados', { 
+        storedToken: !!storedToken, 
+        storedCode: !!storedCode 
+      });
+      
+      // Si hay un token o código almacenado, permitir el cambio de contraseña
+      if (storedToken || storedCode) {
+        console.log('ManualPasswordReset: Token o código encontrado, permitiendo cambio de contraseña');
+        setResetSuccess(true);
+        return true;
+      }
+      
+      // Verificar si hay un código en la URL
+      const searchParams = new URLSearchParams(window.location.search);
+      const code = searchParams.get('code');
+      
+      if (code) {
+        console.log('ManualPasswordReset: Código detectado en URL, intentando verificar');
+        setIsProcessingReset(true);
         
-        if (code) {
-          setIsProcessingReset(true);
-          try {
-            console.log('Intentando verificar código de recuperación:', code);
-            // Intentar usar el código para establecer una sesión
-            const { error } = await supabase.auth.verifyOtp({
-              token_hash: code,
-              type: 'recovery'
-            });
-            
-            if (error) {
-              console.error('Error al verificar OTP:', error);
-              toast.error('El código de recuperación no es válido o ha expirado');
-              setIsProcessingReset(false);
-              return;
-            }
-            
-            // Si llegamos aquí, el código es válido y el usuario está autenticado temporalmente
-            setResetSuccess(true);
-            toast.success('Ahora puedes cambiar tu contraseña');
-          } catch (err) {
-            console.error('Error al procesar el código de recuperación:', err);
-            toast.error('Ocurrió un error al procesar tu solicitud');
-          } finally {
+        try {
+          // Guardar el código inmediatamente para futuros intentos
+          localStorage.setItem('recovery_code', code);
+          
+          // Intentar verificar el código
+          const { error } = await supabase.auth.verifyOtp({
+            token_hash: code,
+            type: 'recovery'
+          });
+          
+          if (error) {
+            console.error('Error al verificar OTP:', error);
+            toast.error('El código de recuperación no es válido o ha expirado');
             setIsProcessingReset(false);
+            return false;
           }
+          
+          // Si llegamos aquí, el código es válido
+          console.log('ManualPasswordReset: Código verificado correctamente');
+          setResetSuccess(true);
+          toast.success('Ahora puedes cambiar tu contraseña');
+          setIsProcessingReset(false);
+          return true;
+        } catch (err) {
+          console.error('Error al procesar el código de recuperación:', err);
+          toast.error('Ocurrió un error al procesar tu solicitud');
+          setIsProcessingReset(false);
+          return false;
         }
-      };
+      }
       
-      handleRecoveryCode();
-    }
-  }, []);
+      // Si no hay token ni código, devolver false
+      return false;
+    };
+    
+    // Ejecutar la verificación y redirigir si es necesario
+    checkRecoveryTokens().then(hasValidToken => {
+      if (!hasValidToken) {
+        console.log('ManualPasswordReset: No hay token ni código válido, redirigiendo al login');
+        navigate('/login');
+      }
+    });
+  }, [navigate]);
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,8 +112,11 @@ export default function ManualPasswordReset() {
 
         toast.success('Tu contraseña ha sido actualizada correctamente');
         
-        // Eliminar el token de recuperación solo después de un cambio exitoso
+        // Eliminar todos los tokens de recuperación solo después de un cambio exitoso
         localStorage.removeItem('recovery_token');
+        localStorage.removeItem('recovery_code');
+        
+        console.log('ManualPasswordReset: Tokens de recuperación eliminados después de cambio exitoso');
         
         // Cerrar sesión para forzar un nuevo inicio de sesión con la nueva contraseña
         await supabase.auth.signOut();
