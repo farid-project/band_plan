@@ -22,6 +22,17 @@ export default function PasswordResetHandler() {
         type
       });
       
+      // Cerrar sesión inmediatamente al detectar cualquier flujo de recuperación
+      if (code || (token && type === 'recovery')) {
+        console.log('PasswordResetHandler: Flujo de recuperación detectado, cerrando sesión por seguridad');
+        try {
+          await supabase.auth.signOut();
+          console.log('PasswordResetHandler: Sesión cerrada exitosamente');
+        } catch (error) {
+          console.error('PasswordResetHandler: Error al cerrar sesión:', error);
+        }
+      }
+      
       // Verificar si ya tenemos tokens guardados
       const storedToken = localStorage.getItem('recovery_token');
       const storedCode = localStorage.getItem('recovery_code');
@@ -29,23 +40,6 @@ export default function PasswordResetHandler() {
       if (storedToken || storedCode) {
         console.log('PasswordResetHandler: Ya hay token/código guardado, redirigiendo a /reset-password');
         navigate('/reset-password', { replace: true });
-        return;
-      }
-      
-      // Manejar código de recuperación
-      if (code) {
-        console.log('PasswordResetHandler: Código de recuperación detectado');
-        localStorage.setItem('recovery_code', code);
-        
-        try {
-          // Cerrar sesión para evitar inicio automático
-          await supabase.auth.signOut();
-          console.log('PasswordResetHandler: Sesión cerrada, redirigiendo a /reset-password');
-          navigate('/reset-password', { replace: true });
-        } catch (error) {
-          console.error('PasswordResetHandler: Error al cerrar sesión', error);
-          navigate('/reset-password', { replace: true });
-        }
         return;
       }
       
