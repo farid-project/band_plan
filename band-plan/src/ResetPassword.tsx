@@ -71,6 +71,12 @@ export default function ResetPassword() {
             
             if (!error) {
               console.log('Código OTP verificado correctamente');
+              localStorage.setItem('recovery_code', code);
+              
+              // Cerrar la sesión inmediatamente para evitar acceso no autorizado
+              console.log('Cerrando sesión después de verificar OTP para evitar acceso no autorizado');
+              await supabase.auth.signOut();
+              
               setCanResetPassword(true);
               return;
             } else {

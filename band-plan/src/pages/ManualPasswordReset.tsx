@@ -25,6 +25,17 @@ export default function ManualPasswordReset() {
         storedCode: !!storedCode 
       });
       
+      // Cerrar cualquier sesión activa para evitar acceso no autorizado
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (data.session) {
+          console.log('ManualPasswordReset: Sesión activa detectada, cerrando sesión por seguridad');
+          await supabase.auth.signOut();
+        }
+      } catch (error) {
+        console.error('Error al verificar/cerrar sesión:', error);
+      }
+      
       // Si hay un token o código almacenado, permitir el cambio de contraseña
       if (storedToken || storedCode) {
         console.log('ManualPasswordReset: Token o código encontrado, permitiendo cambio de contraseña');
@@ -59,6 +70,11 @@ export default function ManualPasswordReset() {
           
           // Si llegamos aquí, el código es válido
           console.log('ManualPasswordReset: Código verificado correctamente');
+          
+          // Cerrar sesión inmediatamente para evitar acceso no autorizado
+          console.log('ManualPasswordReset: Cerrando sesión después de verificar OTP');
+          await supabase.auth.signOut();
+          
           setResetSuccess(true);
           toast.success('Ahora puedes cambiar tu contraseña');
           setIsProcessingReset(false);
@@ -103,10 +119,46 @@ export default function ManualPasswordReset() {
       }
 
       try {
-        // Actualizar la contraseña directamente (esto funciona porque ya verificamos el código)
-        const { error } = await supabase.auth.updateUser({
-          password
-        });
+        // Obtener el código de recuperación almacenado
+        const storedToken = localStorage.getItem('recovery_token');
+        const storedCode = localStorage.getItem('recovery_code');
+        
+        console.log('ManualPasswordReset: Intentando actualizar contraseña con token/código almacenado');
+        
+        let error = null;
+        
+        // Intentar actualizar con el código de recuperación
+        if (storedCode) {
+          console.log('ManualPasswordReset: Usando código de recuperación para actualizar contraseña');
+          // Primero verificamos el OTP para crear una sesión válida
+          const verifyResult = await supabase.auth.verifyOtp({
+            token_hash: storedCode,
+            type: 'recovery'
+          });
+          
+          if (verifyResult.error) {
+            console.error('Error al verificar OTP:', verifyResult.error);
+            error = verifyResult.error;
+          } else {
+            // Ahora actualizamos la contraseña con la sesión activa
+            const updateResult = await supabase.auth.updateUser({
+              password
+            });
+            error = updateResult.error;
+          }
+        } 
+        // Si no hay código pero hay token, intentar con el token
+        else if (storedToken) {
+          console.log('ManualPasswordReset: Usando token de recuperación para actualizar contraseña');
+          const result = await supabase.auth.updateUser({
+            password
+          });
+          error = result.error;
+        }
+        // Si no hay ni código ni token, mostrar error
+        else {
+          throw new Error('No se encontró un código o token de recuperación válido');
+        }
 
         if (error) throw error;
 
