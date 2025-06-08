@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { supabase } from '../lib/supabase';
+import { toast } from 'react-hot-toast';
 import Dashboard from '../pages/Dashboard';
 
 export default function PasswordResetHandler() {
@@ -10,71 +11,54 @@ export default function PasswordResetHandler() {
   const { user } = useAuthStore();
   
   useEffect(() => {
-    const handlePasswordReset = async () => {
-      const searchParams = new URLSearchParams(location.search);
-      const code = searchParams.get('code');
-      const token = searchParams.get('token');
-      const type = searchParams.get('type');
-      
-      console.log('PasswordResetHandler: Verificando parámetros de recuperación', { 
-        code: code ? 'presente' : 'ausente',
-        token: token ? 'presente' : 'ausente',
-        type
-      });
-      
-      // Cerrar sesión inmediatamente al detectar cualquier flujo de recuperación
-      if (code || (token && type === 'recovery')) {
-        console.log('PasswordResetHandler: Flujo de recuperación detectado, cerrando sesión por seguridad');
-        try {
-          await supabase.auth.signOut();
-          console.log('PasswordResetHandler: Sesión cerrada exitosamente');
-        } catch (error) {
-          console.error('PasswordResetHandler: Error al cerrar sesión:', error);
-        }
-      }
-      
-      // Verificar si ya tenemos tokens guardados
-      const storedToken = localStorage.getItem('recovery_token');
-      const storedCode = localStorage.getItem('recovery_code');
-      
-      if (storedToken || storedCode) {
-        console.log('PasswordResetHandler: Ya hay token/código guardado, redirigiendo a /reset-password');
-        navigate('/reset-password', { replace: true });
-        return;
-      }
-      
-      // Manejar token de recuperación
-      if (token && type === 'recovery') {
-        console.log('PasswordResetHandler: Token de recuperación detectado');
-        localStorage.setItem('recovery_token', token);
-        
-        try {
-          // Cerrar sesión para evitar inicio automático
-          await supabase.auth.signOut();
-          console.log('PasswordResetHandler: Sesión cerrada, redirigiendo a /reset-password');
-          navigate('/reset-password', { replace: true });
-        } catch (error) {
-          console.error('PasswordResetHandler: Error al cerrar sesión', error);
-          navigate('/reset-password', { replace: true });
-        }
-        return;
-      }
-      
-      // Si no hay código ni token y estamos en la página principal, redirigir al login
-      if (location.pathname === '/') {
-        navigate('/login', { replace: true });
-      }
-    };
+    // Check if there's a code parameter in the URL (password reset flow)
+    const searchParams = new URLSearchParams(location.search);
+    const code = searchParams.get('code');
     
-    handlePasswordReset();
-  }, [location, navigate]);
+    if (code) {
+      console.log('Code detected in URL, handling password reset');
+      
+      // Supabase automáticamente inicia sesión cuando usas el enlace 
+      // Desconectamos al usuario primero y luego redirigimos
+      const handleResetFlow = async () => {
+        try {
+          // Forzar cierre de sesión primero para evitar inicio de sesión automático
+          await supabase.auth.signOut();
+          
+          // Redirigir a la página de restablecimiento de contraseña con el código como token
+          // Esto asegura que usemos la ruta correcta definida en App.tsx
+          navigate('/reset-password', { 
+            replace: true,
+            state: { resetCode: code }
+          });
+          
+          // Guardar el código de recuperación en localStorage como alternativa
+          localStorage.setItem('recovery_token', code);
+          
+          console.log('Redirigiendo a /reset-password con código de recuperación');
+        } catch (err) {
+          console.error('Error preparing reset flow:', err);
+          toast.error('Error al preparar el flujo de recuperación');
+          navigate('/login', { replace: true });
+        }
+      };
+      
+      handleResetFlow();
+      return;
+    }
+    
+    // If no code is present and the user is not logged in, redirect to login
+    if (!user && !code && location.pathname === '/') {
+      navigate('/login', { replace: true });
+    }
+  }, [location, navigate, user]);
 
-  // Si el usuario está autenticado, mostrar el dashboard
+  // If there's no code, render the normal dashboard if user is logged in
   if (user) {
     return <Dashboard />;
   }
   
-  // Estado de carga mientras se redirige
+  // This is just a loading state while redirecting
   return (
     <div className="flex items-center justify-center min-h-screen">
       <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
