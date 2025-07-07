@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Song, Setlist, SetlistSong } from '../types';
+import { Song, Setlist, SetlistSong, Medley, MedleySong } from '../types';
 import { safeSupabaseRequest } from './supabaseUtils';
 import { toast } from 'react-hot-toast';
 
@@ -69,6 +69,13 @@ export async function getSetlistsByGroup(groupId: string): Promise<Setlist[] | n
         songs:setlist_songs(
           *,
           song:songs(*)
+        ),
+        medleys(
+          *,
+          songs:medley_songs(
+            *,
+            song:songs(*)
+          )
         )
       `)
       .eq('group_id', groupId)
@@ -86,6 +93,13 @@ export async function getSetlistWithSongs(setlistId: string): Promise<Setlist | 
         songs:setlist_songs(
           *,
           song:songs(*)
+        ),
+        medleys(
+          *,
+          songs:medley_songs(
+            *,
+            song:songs(*)
+          )
         )
       `)
       .eq('id', setlistId)
@@ -297,6 +311,13 @@ export async function getEventWithSetlist(eventId: number): Promise<any | null> 
           songs:setlist_songs(
             *,
             song:songs(*)
+          ),
+          medleys(
+            *,
+            songs:medley_songs(
+              *,
+              song:songs(*)
+            )
           )
         )
       `)
@@ -304,4 +325,257 @@ export async function getEventWithSetlist(eventId: number): Promise<any | null> 
       .single(),
     'Error al cargar el evento con setlist'
   );
+}
+
+// Medley functions
+export async function createMedley(
+  setlistId: string,
+  name: string,
+  position: number,
+  songIds: string[]
+): Promise<Medley | null> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error('No se pudo obtener la información del usuario');
+      return null;
+    }
+
+    // Crear el medley
+    const { data: medley, error: medleyError } = await supabase
+      .from('medleys')
+      .insert({
+        setlist_id: setlistId,
+        name,
+        position,
+        created_by: user.id
+      })
+      .select()
+      .single();
+
+    if (medleyError) {
+      console.error('Error al crear el medley:', medleyError);
+      toast.error('Error al crear el medley');
+      return null;
+    }
+
+    // Añadir las canciones al medley
+    const medleySongs = songIds.map((songId, index) => ({
+      medley_id: medley.id,
+      song_id: songId,
+      position: index + 1,
+      created_by: user.id
+    }));
+
+    const { error: songsError } = await supabase
+      .from('medley_songs')
+      .insert(medleySongs);
+
+    if (songsError) {
+      console.error('Error al añadir canciones al medley:', songsError);
+      toast.error('Error al añadir canciones al medley');
+      return null;
+    }
+
+    return medley;
+  } catch (error) {
+    console.error('Error al crear el medley:', error);
+    toast.error('Error al crear el medley');
+    return null;
+  }
+}
+
+export async function updateMedley(
+  medleyId: string,
+  updates: Partial<Medley>
+): Promise<Medley | null> {
+  return safeSupabaseRequest(
+    () => supabase
+      .from('medleys')
+      .update(updates)
+      .eq('id', medleyId)
+      .select()
+      .single(),
+    'Error al actualizar el medley'
+  );
+}
+
+export async function deleteMedley(medleyId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('medleys')
+      .delete()
+      .eq('id', medleyId);
+    
+    if (error) {
+      console.error('Error al eliminar el medley:', error);
+      toast.error('Error al eliminar el medley');
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error al eliminar el medley:', error);
+    toast.error('Error al eliminar el medley');
+    return false;
+  }
+}
+
+export async function addSongToMedley(
+  medleyId: string,
+  songId: string,
+  position: number
+): Promise<MedleySong | null> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error('No se pudo obtener la información del usuario');
+      return null;
+    }
+
+    const { data, error } = await supabase
+      .from('medley_songs')
+      .insert({
+        medley_id: medleyId,
+        song_id: songId,
+        position,
+        created_by: user.id
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error al añadir la canción al medley:', error);
+      toast.error('Error al añadir la canción al medley');
+      return null;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error al añadir la canción al medley:', error);
+    toast.error('Error al añadir la canción al medley');
+    return null;
+  }
+}
+
+export async function removeSongFromMedley(medleyId: string, songId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('medley_songs')
+      .delete()
+      .eq('medley_id', medleyId)
+      .eq('song_id', songId);
+    
+    if (error) {
+      console.error('Error al eliminar la canción del medley:', error);
+      toast.error('Error al eliminar la canción del medley');
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error al eliminar la canción del medley:', error);
+    toast.error('Error al eliminar la canción del medley');
+    return false;
+  }
+}
+
+export async function reorderMedleySongs(
+  medleyId: string,
+  songPositions: { songId: string; position: number }[]
+): Promise<boolean> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error('No se pudo obtener la información del usuario');
+      return false;
+    }
+
+    const updates = songPositions.map(({ songId, position }) => ({
+      medley_id: medleyId,
+      song_id: songId,
+      position,
+      created_by: user.id
+    }));
+
+    const { error } = await supabase
+      .from('medley_songs')
+      .upsert(updates, { onConflict: 'medley_id,song_id' });
+
+    if (error) {
+      console.error('Error al reordenar las canciones del medley:', error);
+      toast.error('Error al reordenar las canciones del medley');
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error al reordenar las canciones del medley:', error);
+    toast.error('Error al reordenar las canciones del medley');
+    return false;
+  }
+}
+
+export async function reorderSetlistItems(
+  setlistId: string,
+  items: { type: 'song' | 'medley'; id: string; position: number }[]
+): Promise<boolean> {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error('No se pudo obtener la información del usuario');
+      return false;
+    }
+
+    // Actualizar posiciones de canciones
+    const songUpdates = items
+      .filter(item => item.type === 'song')
+      .map(item => ({
+        setlist_id: setlistId,
+        song_id: item.id,
+        position: item.position,
+        created_by: user.id
+      }));
+
+    if (songUpdates.length > 0) {
+      const { error: songError } = await supabase
+        .from('setlist_songs')
+        .upsert(songUpdates, { onConflict: 'setlist_id,song_id' });
+
+      if (songError) {
+        console.error('Error al reordenar las canciones:', songError);
+        toast.error('Error al reordenar las canciones');
+        return false;
+      }
+    }
+
+    // Actualizar posiciones de medleys
+    const medleyUpdates = items
+      .filter(item => item.type === 'medley')
+      .map(item => ({
+        id: item.id,
+        position: item.position
+      }));
+
+    if (medleyUpdates.length > 0) {
+      for (const update of medleyUpdates) {
+        const { error: medleyError } = await supabase
+          .from('medleys')
+          .update({ position: update.position })
+          .eq('id', update.id);
+
+        if (medleyError) {
+          console.error('Error al reordenar los medleys:', medleyError);
+          toast.error('Error al reordenar los medleys');
+          return false;
+        }
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error al reordenar los elementos del setlist:', error);
+    toast.error('Error al reordenar los elementos del setlist');
+    return false;
+  }
 } 

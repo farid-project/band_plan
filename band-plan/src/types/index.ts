@@ -65,6 +65,7 @@ export interface Setlist {
   created_at: string;
   updated_at: string;
   songs?: SetlistSong[];
+  medleys?: Medley[];
 }
 
 export interface SetlistSong {
@@ -76,6 +77,35 @@ export interface SetlistSong {
   created_at: string;
   updated_at: string;
   song?: Song;
+}
+
+export interface Medley {
+  id: string;
+  setlist_id: string;
+  name: string;
+  position: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  songs?: MedleySong[];
+}
+
+export interface MedleySong {
+  id: string;
+  medley_id: string;
+  song_id: string;
+  position: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  song?: Song;
+}
+
+export interface SetlistItem {
+  type: 'song' | 'medley';
+  position: number;
+  song?: SetlistSong;
+  medley?: Medley;
 }
 
 export interface Event {
