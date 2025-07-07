@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { supabase } from './lib/supabase';
-import { useAuthStore } from './store/authStore';
 import Input from './components/Input';
 import Button from './components/Button';
 
@@ -13,7 +12,6 @@ export default function ResetPassword() {
   const [canResetPassword, setCanResetPassword] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { setUser, setSession } = useAuthStore();
 
   // Efecto para verificar la sesión y el token de recuperación
   useEffect(() => {
@@ -109,18 +107,14 @@ export default function ResetPassword() {
       }
       
       setResetSuccess(true);
-      setMessage('¡Contraseña actualizada correctamente! Cerrando sesión...');
+      setMessage('¡Contraseña actualizada correctamente! Redirigiendo al inicio...');
       
-      // Cierre de sesión inmediato y completo
-      await supabase.auth.signOut();
-      
-      // Limpiar el estado de autenticación en la store
-      setUser(null);
-      setSession(null);
+      // Mantener la sesión iniciada y redirigir al inicio
+      // Nota: No cerramos la sesión, mantenemos al usuario autenticado
       
       // Redirigir después de un breve retraso
       setTimeout(() => {
-        navigate('/login', { replace: true });
+        navigate('/', { replace: true });
       }, 2000);
     } catch (error: any) {
       setMessage('Error: ' + error.message);
