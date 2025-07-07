@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Event, GroupMember } from '../types';
+import { Event, GroupMember, Setlist } from '../types';
 import Button from './Button';
 import Input from './Input';
 import { X, MapPin, Loader2 } from 'lucide-react';
@@ -12,6 +12,7 @@ import EventMemberSelector from './EventMemberSelector';
 import { safeSupabaseRequest } from '../lib/supabaseUtils';
 import { debounce } from 'lodash';
 import { updateGroupCalendar } from '../utils/calendarSync';
+import { getSetlistsByGroup, assignSetlistToEvent } from '../lib/setlistUtils';
 
 interface EventModalProps {
   isOpen: boolean;
@@ -58,6 +59,8 @@ export default function EventModal({
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [events, setEvents] = useState<Event[]>([]);
+  const [setlists, setSetlists] = useState<Setlist[]>([]);
+  const [selectedSetlistId, setSelectedSetlistId] = useState<string>('');
 
   useEffect(() => {
     if (event) {
@@ -66,6 +69,7 @@ export default function EventModal({
       setTime(event.time);
       setNotes(event.notes || '');
       setLocation(event.location || '');
+      setSelectedSetlistId(event.setlist_id || '');
       if (event.location) {
         setSelectedLocation({
           display_name: event.location,
@@ -80,22 +84,27 @@ export default function EventModal({
       const formattedDate = format(selectedDate, 'yyyy-MM-dd');
       setDate(formattedDate);
       setTime('20:00');
+      setSelectedSetlistId('');
       loadAvailableMembers(formattedDate);
     }
   }, [event, selectedDate]);
 
   useEffect(() => {
-    const fetchEvents = async () => {
-      const { data } = await supabase
-        .from('events')
-        .select('*')
-        .eq('group_id', groupId);
+    const fetchData = async () => {
+      const [eventsData, setlistsData] = await Promise.all([
+        supabase
+          .from('events')
+          .select('*')
+          .eq('group_id', groupId),
+        getSetlistsByGroup(groupId)
+      ]);
       
-      setEvents(data || []);
+      setEvents(eventsData.data || []);
+      setSetlists(setlistsData || []);
     };
 
     if (isOpen) {
-      fetchEvents();
+      fetchData();
     }
   }, [isOpen, groupId]);
 
@@ -446,6 +455,14 @@ export default function EventModal({
               return updateGroupCalendar(groupId, member.memberId);
             })
         );
+
+        // Asignar setlist si se ha seleccionado uno
+        if (selectedSetlistId) {
+          await assignSetlistToEvent(eventId, selectedSetlistId);
+        } else if (event?.setlist_id) {
+          // Si había un setlist asignado y ahora no se selecciona ninguno, eliminar la asignación
+          await assignSetlistToEvent(eventId, null);
+        }
       }
 
       setLoading(false);
@@ -556,6 +573,32 @@ export default function EventModal({
               </span>
             </div>
           )}
+
+          {/* Setlist Selector */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Setlist (opcional)
+            </label>
+            <select
+              value={selectedSetlistId}
+              onChange={(e) => setSelectedSetlistId(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 p-2"
+            >
+              <option value="">Sin setlist</option>
+              {setlists.map((setlist) => (
+                <option key={setlist.id} value={setlist.id}>
+                  {setlist.name} ({setlist.songs?.length || 0} canciones)
+                </option>
+              ))}
+            </select>
+            {selectedSetlistId && (
+              <div className="mt-2 p-3 bg-blue-50 rounded-lg">
+                <p className="text-sm text-blue-800">
+                  Setlist seleccionado: {setlists.find(s => s.id === selectedSetlistId)?.name}
+                </p>
+              </div>
+            )}
+          </div>
 
           {date && (
             <EventMemberSelector

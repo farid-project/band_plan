@@ -42,6 +42,42 @@ export interface Instrument {
   created_by: string;
 }
 
+export interface Song {
+  id: string;
+  group_id: string;
+  title: string;
+  artist?: string;
+  duration_minutes?: number;
+  key?: string;
+  notes?: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Setlist {
+  id: string;
+  group_id: string;
+  name: string;
+  description?: string;
+  estimated_duration_minutes?: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  songs?: SetlistSong[];
+}
+
+export interface SetlistSong {
+  id: string;
+  setlist_id: string;
+  song_id: string;
+  position: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  song?: Song;
+}
+
 export interface Event {
   id: number;
   name: string;
@@ -50,7 +86,9 @@ export interface Event {
   group_id: string;
   notes?: string;
   location?: string;
+  setlist_id?: string;
   created_by: string;
   created_at: string;
   updated_at: string;
+  setlist?: Setlist;
 }

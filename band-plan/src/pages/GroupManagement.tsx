@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Group, GroupMember, Instrument } from '../types';
 import Button from '../components/Button';
-import { Plus, Music, User, Edit2, Calendar, Loader2, Trash2 } from 'lucide-react';
+import { Plus, Music, User, Edit2, Calendar, Loader2, Trash2, ListMusic } from 'lucide-react';
 import AddMemberModal from '../components/AddMemberModal';
 import EditMemberModal from '../components/EditMemberModal';
 import { toast } from 'react-hot-toast';
@@ -13,6 +13,7 @@ import EventsList from '../components/EventsList';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 import { safeSupabaseRequest } from '../lib/supabaseUtils';
 import CalendarInstructionsModal from '../components/CalendarInstructionsModal';
+import SetlistPage from '../components/SetlistPage';
 
 interface ExtendedGroupMember extends GroupMember {
   instruments: {
@@ -40,6 +41,7 @@ export default function GroupManagement() {
   const [isUserMember, setIsUserMember] = useState(false);
   const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
   const [calendarUrl, setCalendarUrl] = useState('');
+  const [activeTab, setActiveTab] = useState<'overview' | 'setlists'>('overview');
 
   useEffect(() => {
     if (id) {
@@ -407,52 +409,93 @@ export default function GroupManagement() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Members List */}
-        <div className="bg-white rounded-lg shadow-md">
-          <div className="p-4 border-b">
-            <h2 className="text-lg font-semibold">Miembros del Grupo</h2>
-          </div>
-          {members.length === 0 ? (
-            <div className="text-center py-8">
-              <User className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-              <p className="text-gray-500">
-                No hay miembros aún. {canAddMembers ? '¡Haz clic en "Unirse al Grupo" para ser el primer miembro!' : 'Espera a que alguien se una al grupo.'}
-              </p>
-            </div>
-          ) : (
-            <div className="divide-y divide-gray-200">
-              {principalMembers.length > 0 && renderMemberGroup(principalMembers, 'Miembros Principales')}
-              {substituteMembers.length > 0 && renderMemberGroup(substituteMembers, 'Miembros Sustitutos')}
-            </div>
-          )}
-        </div>
-
-        {/* Availability Calendar */}
-        <div className="bg-white rounded-lg shadow-md">
-          <div className="p-4 border-b">
-            <h2 className="text-lg font-semibold">Disponibilidad</h2>
-          </div>
-          <div className="p-4">
-            <AvailabilityCalendar 
-              members={members} 
-              onAvailableDatesChange={setAvailableDates}
-              groupName={group.name}
-            />
-          </div>
-        </div>
+      {/* Navigation Tabs */}
+      <div className="border-b border-gray-200 mb-6">
+        <nav className="-mb-px flex space-x-8">
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={`${
+              activeTab === 'overview'
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
+          >
+            <Calendar className="w-4 h-4" />
+            <span>Vista General</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('setlists')}
+            className={`${
+              activeTab === 'setlists'
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
+          >
+            <ListMusic className="w-4 h-4" />
+            <span>Canciones y Setlists</span>
+          </button>
+        </nav>
       </div>
 
-      {/* Events List */}
-      {group && id && (
-        <div className="mt-6 bg-white rounded-lg shadow-md">
-          <EventsList
-            groupId={id}
-            canManageEvents={userRole === 'admin' || isPrincipalMember}
-            availableDates={availableDates}
-            members={members}
-          />
-        </div>
+      {/* Tab Content */}
+      {activeTab === 'overview' && (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Members List */}
+            <div className="bg-white rounded-lg shadow-md">
+              <div className="p-4 border-b">
+                <h2 className="text-lg font-semibold">Miembros del Grupo</h2>
+              </div>
+              {members.length === 0 ? (
+                <div className="text-center py-8">
+                  <User className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                  <p className="text-gray-500">
+                    No hay miembros aún. {canAddMembers ? '¡Haz clic en "Unirse al Grupo" para ser el primer miembro!' : 'Espera a que alguien se una al grupo.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-200">
+                  {principalMembers.length > 0 && renderMemberGroup(principalMembers, 'Miembros Principales')}
+                  {substituteMembers.length > 0 && renderMemberGroup(substituteMembers, 'Miembros Sustitutos')}
+                </div>
+              )}
+            </div>
+
+            {/* Availability Calendar */}
+            <div className="bg-white rounded-lg shadow-md">
+              <div className="p-4 border-b">
+                <h2 className="text-lg font-semibold">Disponibilidad</h2>
+              </div>
+              <div className="p-4">
+                <AvailabilityCalendar 
+                  members={members} 
+                  onAvailableDatesChange={setAvailableDates}
+                  groupName={group.name}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Events List */}
+          {group && id && (
+            <div className="mt-6 bg-white rounded-lg shadow-md">
+              <EventsList
+                groupId={id}
+                canManageEvents={userRole === 'admin' || isPrincipalMember}
+                availableDates={availableDates}
+                members={members}
+              />
+            </div>
+          )}
+        </>
+      )}
+
+      {activeTab === 'setlists' && group && id && (
+        <SetlistPage 
+          groupId={id} 
+          canManageSongs={userRole === 'admin' || isPrincipalMember}
+          canManageSetlists={userRole === 'admin' || isPrincipalMember}
+        />
       )}
 
       {/* Modals */}
