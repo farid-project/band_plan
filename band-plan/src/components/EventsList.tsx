@@ -54,8 +54,12 @@ export default function EventsList({
           setlist:setlists (
             id,
             name,
-            songs:setlist_songs(count),
-            medleys(count)
+            songs:setlist_songs(
+              id
+            ),
+            medleys(
+              id
+            )
           )
         `)
         .eq('group_id', groupId)
@@ -389,6 +393,25 @@ export default function EventsList({
                                         <Users className="w-3 h-3 mr-1" />
                                         {event.members.length}
                                       </div>
+                                      {event.setlist ? (
+                                        <div className="flex items-center">
+                                          <Music className="w-3 h-3 mr-1" />
+                                          <span className="text-indigo-600 font-medium">
+                                            {event.setlist.name}
+                                          </span>
+                                          <span className="text-gray-400 ml-1">
+                                            ({event.setlist.songs?.length || 0} canciones
+                                            {event.setlist.medleys?.length > 0 && `, ${event.setlist.medleys.length} medleys`})
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-center">
+                                          <Music className="w-3 h-3 mr-1 text-gray-300" />
+                                          <span className="text-gray-400 italic">
+                                            Sin setlist
+                                          </span>
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
                                 </div>
