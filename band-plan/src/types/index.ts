@@ -84,9 +84,7 @@ export interface Medley {
   setlist_id: string;
   name: string;
   position: number;
-  created_by: string;
   created_at: string;
-  updated_at: string;
   songs?: MedleySong[];
 }
 
@@ -102,10 +100,10 @@ export interface MedleySong {
 }
 
 export interface SetlistItem {
+  id: string;
   type: 'song' | 'medley';
   position: number;
-  song?: SetlistSong;
-  medley?: Medley;
+  data: SetlistSong | Medley;
 }
 
 export interface Event {

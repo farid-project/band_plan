@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Setlist, Song, SetlistSong, Medley } from '../types';
+import { Setlist, Song, SetlistSong, Medley, SetlistItem, MedleySong } from '../types';
 import { 
   getSetlistsByGroup, 
   createSetlist, 
@@ -16,7 +16,22 @@ import { toast } from 'react-hot-toast';
 import Button from './Button';
 import Input from './Input';
 import { supabase } from '../lib/supabase';
-import { FaMusic, FaPlus, FaEdit } from 'react-icons/fa';
+import { FaMusic, FaPlus, FaEdit, FaGripVertical } from 'react-icons/fa';
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import CreateMedleyModal from './CreateMedleyModal';
 import MedleyItem from './MedleyItem';
 
@@ -37,6 +52,79 @@ const initialFormData: SetlistFormData = {
   estimated_duration_minutes: ''
 };
 
+function SortableSetlistItem({ 
+  item, 
+  canManageSetlists, 
+  songs, 
+  onRemoveSong,
+  onSongAddedToMedley,
+  onSongRemovedFromMedley,
+  onMedleyRenamed,
+  onMedleyDeleted,
+}: { 
+  item: SetlistItem, 
+  canManageSetlists: boolean, 
+  songs: Song[], 
+  onRemoveSong: (setlistId: string, songId: string) => void,
+  onSongAddedToMedley: (medleyId: string, song: Song, newMedleySong: MedleySong) => void,
+  onSongRemovedFromMedley: (medleyId: string, songId: string) => void,
+  onMedleyRenamed: (medleyId: string, newName: string) => void,
+  onMedleyDeleted: (medleyId: string) => void,
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: item.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} className="flex items-center gap-2 mb-2">
+      {canManageSetlists && (
+        <div {...listeners} className="cursor-grab text-gray-400 py-3 px-2 touch-none">
+          <FaGripVertical />
+        </div>
+      )}
+      <div className="flex-grow">
+        {item.type === 'song' ? (
+          <div className="bg-white p-3 rounded-md shadow-sm border border-gray-200 flex justify-between items-center">
+            <div>
+              <p className="font-medium">{(item.data as SetlistSong).song?.title}</p>
+              <p className="text-sm text-gray-500">{(item.data as SetlistSong).song?.artist} - {(item.data as SetlistSong).song?.duration_minutes}m - Tono: {(item.data as SetlistSong).song?.key}</p>
+            </div>
+            {canManageSetlists && (
+              <Button 
+                variant="danger"
+                onClick={() => onRemoveSong((item.data as SetlistSong).setlist_id, (item.data as SetlistSong).song_id)}
+              >
+                Eliminar
+              </Button>
+            )}
+          </div>
+        ) : (
+          <MedleyItem
+            medley={item.data as Medley}
+            availableSongs={songs.filter(song => 
+                !(item.data as Medley).songs?.some(ms => ms.song_id === song.id)
+            )}
+            canEdit={canManageSetlists}
+            onSongAdded={onSongAddedToMedley}
+            onSongRemoved={onSongRemovedFromMedley}
+            onMedleyRenamed={onMedleyRenamed}
+            onMedleyDeleted={onMedleyDeleted}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function SetlistManagement({ groupId, canManageSetlists = true }: SetlistManagementProps) {
   const [setlists, setSetlists] = useState<Setlist[]>([]);
   const [songs, setSongs] = useState<Song[]>([]);
@@ -47,15 +135,55 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
   const [formData, setFormData] = useState<SetlistFormData>(initialFormData);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [setlistToDelete, setSetlistToDelete] = useState<Setlist | null>(null);
+  const [addSongSearch, setAddSongSearch] = useState('');
 
   const [showCreateMedleyModal, setShowCreateMedleyModal] = useState(false);
 
   const [editingMedleyId, setEditingMedleyId] = useState<string | null>(null);
   const [editingMedleyName, setEditingMedleyName] = useState('');
 
+  const [setlistItems, setSetlistItems] = useState<SetlistItem[]>([]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+  );
+
   useEffect(() => {
     loadData();
   }, [groupId]);
+
+  useEffect(() => {
+    if (selectedSetlist) {
+      const items: SetlistItem[] = [];
+      
+      if (selectedSetlist.songs) {
+        selectedSetlist.songs.forEach(song => {
+          items.push({
+            id: song.id,
+            type: 'song',
+            position: song.position,
+            data: song
+          });
+        });
+      }
+
+      if (selectedSetlist.medleys) {
+        selectedSetlist.medleys.forEach(medley => {
+          items.push({
+            id: medley.id,
+            type: 'medley',
+            position: medley.position,
+            data: medley
+          });
+        });
+      }
+
+      items.sort((a, b) => a.position - b.position);
+      setSetlistItems(items);
+    } else {
+      setSetlistItems([]);
+    }
+  }, [selectedSetlist]);
 
   const loadData = async () => {
     setLoading(true);
@@ -64,10 +192,30 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
       getSongsByGroup(groupId)
     ]);
     
-    if (setlistsData) setSetlists(setlistsData);
+    if (setlistsData) {
+        setSetlists(setlistsData);
+    }
+
     if (songsData) setSongs(songsData);
     setLoading(false);
     return setlistsData;
+  };
+
+  const refreshSelectedSetlist = async () => {
+    const setlistsData = await loadData();
+    if (setlistsData && selectedSetlist) {
+      const updatedSetlist = setlistsData.find(s => s.id === selectedSetlist.id);
+      if (updatedSetlist) {
+        const sortedSetlist = {
+            ...updatedSetlist,
+            songs: (updatedSetlist.songs || []).sort((a, b) => a.position - b.position),
+            medleys: (updatedSetlist.medleys || []).sort((a, b) => a.position - b.position),
+        };
+        setSelectedSetlist(sortedSetlist);
+      } else {
+        setSelectedSetlist(null);
+      }
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -87,8 +235,8 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
     const setlistData = {
       group_id: groupId,
       name: formData.name.trim(),
-      description: formData.description.trim() || null,
-      estimated_duration_minutes: formData.estimated_duration_minutes ? parseInt(formData.estimated_duration_minutes) : null,
+      description: formData.description.trim() || undefined,
+      estimated_duration_minutes: formData.estimated_duration_minutes ? parseInt(formData.estimated_duration_minutes) : undefined,
       created_by: user.id
     };
 
@@ -97,16 +245,18 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
       if (updated) {
         toast.success('Setlist actualizado correctamente');
         setSetlists(prevSetlists => 
-          prevSetlists.map(s => s.id === editingSetlist.id ? updated : s)
+          prevSetlists.map(s => s.id === editingSetlist.id ? {...s, ...updated} : s)
         );
         
-        // Si este setlist está seleccionado, actualizarlo también
         if (selectedSetlist?.id === editingSetlist.id) {
-          setSelectedSetlist(updated);
+            setSelectedSetlist(prev => prev ? {...prev, ...updated} : null);
         }
       }
     } else {
-      const created = await createSetlist(setlistData);
+      const created = await createSetlist({
+        ...setlistData,
+        name: setlistData.name,
+      });
       if (created) {
         toast.success('Setlist creado correctamente');
         setSetlists(prevSetlists => [...prevSetlists, { ...created, songs: [] }]);
@@ -134,9 +284,7 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
   const confirmDelete = async () => {
     if (!setlistToDelete) return;
 
-    console.log('Eliminando setlist:', setlistToDelete.id);
     const success = await deleteSetlist(setlistToDelete.id);
-    console.log('Resultado de eliminación:', success);
     
     if (success) {
       toast.success('Setlist eliminado correctamente');
@@ -153,76 +301,113 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
   };
 
   const handleAddSongToSetlist = async (setlistId: string, songId: string) => {
-    const setlist = setlists.find(s => s.id === setlistId);
-    if (!setlist) return;
+    if (!selectedSetlist) return;
 
-    const currentSongs = setlist.songs || [];
-    const newPosition = currentSongs.length + 1;
+    const newPosition = setlistItems.length + 1;
 
-    console.log('Añadiendo canción al setlist:', { setlistId, songId, newPosition });
     const result = await addSongToSetlist(setlistId, songId, newPosition);
     
     if (result) {
       toast.success('Canción añadida al setlist');
-      
-      // Obtener la información completa de la canción
       const songToAdd = songs.find(s => s.id === songId);
+      
       if (songToAdd) {
-        // Actualizar el estado local inmediatamente
-        const updatedSetlist = {
-          ...setlist,
-          songs: [...(setlist.songs || []), {
-            ...result,
-            song: songToAdd
-          }]
+        const newSetlistSong: SetlistSong = {
+          ...result,
+          position: newPosition,
+          song: songToAdd
         };
         
-        setSetlists(prevSetlists => 
-          prevSetlists.map(s => s.id === setlistId ? updatedSetlist : s)
-        );
+        const updatedSetlist = {
+          ...selectedSetlist,
+          songs: [...(selectedSetlist.songs || []), newSetlistSong]
+        };
         
-        // Si este setlist está seleccionado, actualizarlo también
-        if (selectedSetlist?.id === setlistId) {
-          setSelectedSetlist(updatedSetlist);
-        }
+        setSelectedSetlist(updatedSetlist);
+        setSetlists(prev => prev.map(s => s.id === setlistId ? updatedSetlist : s));
       }
     } else {
       console.error('No se pudo añadir la canción al setlist');
     }
   };
 
-  const handleRemoveSongFromSetlist = async (setlistId: string, songId: string) => {
-    const success = await removeSongFromSetlist(setlistId, songId);
+  const handleRemoveSongFromSetlist = async (setlistId: string, songIdToRemove: string) => {
+    const success = await removeSongFromSetlist(setlistId, songIdToRemove);
     if (success) {
       toast.success('Canción eliminada del setlist');
       
-      // Actualizar el estado local inmediatamente
-      setSetlists(prevSetlists => 
-        prevSetlists.map(setlist => {
-          if (setlist.id === setlistId) {
-            return {
-              ...setlist,
-              songs: (setlist.songs || []).filter(ss => ss.song_id !== songId)
-            };
-          }
-          return setlist;
-        })
-      );
+      const updatedSetlist = selectedSetlist ? {
+        ...selectedSetlist,
+        songs: selectedSetlist.songs?.filter(s => s.song_id !== songIdToRemove)
+      } : null;
+
+      if (updatedSetlist) {
+          setSelectedSetlist(updatedSetlist);
       
-      // Si este setlist está seleccionado, actualizarlo también
-      if (selectedSetlist?.id === setlistId) {
-        setSelectedSetlist(prev => prev ? {
-          ...prev,
-          songs: (prev.songs || []).filter(ss => ss.song_id !== songId)
-        } : null);
+          setSetlists(prevSetlists =>
+              prevSetlists.map(s => s.id === updatedSetlist!.id ? updatedSetlist : s)
+          );
       }
+    } else {
+      toast.error('No se pudo eliminar la canción del setlist');
     }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id || !selectedSetlist) {
+      return;
+    }
+
+    const oldIndex = setlistItems.findIndex(item => item.id === active.id);
+    const newIndex = setlistItems.findIndex(item => item.id === over.id);
+
+    const reorderedItems = arrayMove(setlistItems, oldIndex, newIndex);
+
+    const itemsToUpdate = reorderedItems.map((item, index) => ({
+      id: item.id,
+      type: item.type,
+      position: index + 1,
+    }));
+
+    const newSongs = itemsToUpdate
+      .filter(item => item.type === 'song')
+      .map(updatedItem => {
+        const originalSong = selectedSetlist.songs?.find(s => s.id === updatedItem.id);
+        return { ...originalSong!, position: updatedItem.position };
+      });
+
+    const newMedleys = itemsToUpdate
+      .filter(item => item.type === 'medley')
+      .map(updatedItem => {
+        const originalMedley = selectedSetlist.medleys?.find(m => m.id === updatedItem.id);
+        return { ...originalMedley!, position: updatedItem.position };
+      });
+
+    const updatedSetlist = {
+      ...selectedSetlist,
+      songs: newSongs,
+      medleys: newMedleys,
+    };
+
+    setSelectedSetlist(updatedSetlist);
+    setSetlists(prev => prev.map(s => s.id === updatedSetlist.id ? updatedSetlist : s));
+
+    reorderSetlistItems(selectedSetlist.id, itemsToUpdate).then(success => {
+      if (!success) {
+        toast.error("No se pudo guardar el orden. Se revertirán los cambios.");
+        loadData();
+      }
+    });
   };
 
   const handleReorderSongs = async (setlistId: string, songPositions: { songId: string; position: number }[]) => {
     const success = await reorderSetlistSongs(setlistId, songPositions);
     if (success) {
       toast.success('Orden actualizado');
+    } else {
+      toast.error('No se pudo actualizar el orden. Refrescando...');
       await loadData();
     }
   };
@@ -233,111 +418,101 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
     setShowForm(false);
   };
 
-  const formatDuration = (minutes: number | null) => {
+  const formatDuration = (minutes: number | null | undefined) => {
     if (!minutes) return '-';
     const hours = Math.floor(minutes / 60);
-    const mins = minutes % 60;
+    const mins = Math.round(minutes % 60);
     return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
   };
 
   const getAvailableSongs = (setlist: Setlist) => {
-    const setlistSongIds = (setlist.songs || []).map(ss => ss.song_id);
-    return songs.filter(song => !setlistSongIds.includes(song.id));
+    if (!songs) return [];
+    const setlistSongIds = new Set((setlist.songs || []).map(ss => ss.song_id));
+    return songs.filter(song => !setlistSongIds.has(song.id));
+  };
+  
+  const handleSelectSetlist = (setlist: Setlist) => {
+    const fullSetlistData = setlists.find(s => s.id === setlist.id);
+    setSelectedSetlist(fullSetlistData || null);
   };
 
-  // Funciones para el nuevo sistema de medleys
-  const handleCreateMedley = () => {
-    setShowCreateMedleyModal(true);
-  };
-
-  const handleMedleyCreated = async () => {
-    const newSetlists = await loadData();
-    // Buscar el setlist actualizado y seleccionarlo de nuevo
-    if (selectedSetlist && newSetlists) {
-      const updated = newSetlists.find(s => s.id === selectedSetlist.id);
-      if (updated) setSelectedSetlist(updated);
-    }
-  };
-
-  const handleMedleyUpdated = async () => {
-    const newSetlists = await loadData();
-    if (selectedSetlist && newSetlists) {
-      const updated = newSetlists.find(s => s.id === selectedSetlist.id);
-      if (updated) setSelectedSetlist({ ...updated }); // Forzar re-render
-    }
-  };
-
-  const handleMedleyDeleted = () => {
-    loadData();
-  };
-
-  // Obtener canciones disponibles para medleys (excluyendo las que ya están en el setlist)
-  const getAvailableSongsForMedley = (setlist: Setlist) => {
-    const setlistSongIds = (setlist.songs || []).map(ss => ss.song_id);
-    const medleySongIds = (setlist.medleys || []).flatMap(m => 
-      (m.songs || []).map(ms => ms.song_id)
-    );
-    const usedSongIds = [...setlistSongIds, ...medleySongIds];
-    return songs.filter(song => !usedSongIds.includes(song.id));
-  };
-
-  // Crear lista ordenada de elementos del setlist (canciones y medleys)
-  const getSetlistItems = (setlist: Setlist) => {
-    const items: Array<{ type: 'song' | 'medley'; id: string; position: number; data: any }> = [];
+  const handleSongAddedToMedley = (medleyId: string, song: Song, medleySong: MedleySong) => {
+    if (!selectedSetlist) return;
     
-    // Añadir canciones
-    (setlist.songs || []).forEach(song => {
-      items.push({
-        type: 'song',
-        id: song.song_id,
-        position: song.position,
-        data: song
-      });
-    });
+    const fullMedleySong = { ...medleySong, song };
+
+    const updatedSetlist = {
+      ...selectedSetlist,
+      medleys: (selectedSetlist.medleys || []).map(m => 
+        m.id === medleyId 
+          ? { ...m, songs: [...(m.songs || []), fullMedleySong].sort((a,b) => a.position - b.position) } 
+          : m
+      ),
+    };
     
-    // Añadir medleys
-    (setlist.medleys || []).forEach(medley => {
-      items.push({
-        type: 'medley',
-        id: medley.id,
-        position: medley.position,
-        data: medley
-      });
-    });
+    setSelectedSetlist(updatedSetlist);
+    setSetlists(prev => prev.map(s => s.id === updatedSetlist.id ? updatedSetlist : s));
+  };
+
+  const handleSongRemovedFromMedley = (medleyId: string, songId: string) => {
+    if (!selectedSetlist) return;
+
+    const updatedSetlist = {
+        ...selectedSetlist,
+        medleys: (selectedSetlist.medleys || []).map(m => 
+            m.id === medleyId 
+              ? { ...m, songs: (m.songs || []).filter(ms => ms.song_id !== songId) }
+              : m
+        ),
+    };
+
+    setSelectedSetlist(updatedSetlist);
+    setSetlists(prev => prev.map(s => s.id === updatedSetlist.id ? updatedSetlist : s));
+  };
+
+  const handleMedleyRenamed = (medleyId: string, newName: string) => {
+    if (!selectedSetlist) return;
+
+    const updatedSetlist = {
+        ...selectedSetlist,
+        medleys: (selectedSetlist.medleys || []).map(m => 
+            m.id === medleyId ? { ...m, name: newName } : m
+        ),
+    };
     
-    // Ordenar por posición
-    return items.sort((a, b) => a.position - b.position);
+    setSelectedSetlist(updatedSetlist);
+    setSetlists(prev => prev.map(s => s.id === updatedSetlist.id ? updatedSetlist : s));
   };
 
-  const startMedleyEdit = (medley: Medley) => {
-    setEditingMedleyId(medley.id);
-    setEditingMedleyName(medley.name);
+  const handleMedleyDeleted = (medleyId: string) => {
+    if (!selectedSetlist) return;
+    
+    const updatedSetlist = {
+        ...selectedSetlist,
+        medleys: (selectedSetlist.medleys || []).filter(m => m.id !== medleyId),
+    };
+
+    setSelectedSetlist(updatedSetlist);
+    setSetlists(prev => prev.map(s => s.id === updatedSetlist.id ? updatedSetlist : s));
   };
 
-  const cancelMedleyEdit = () => {
-    setEditingMedleyId(null);
-    setEditingMedleyName('');
-  };
+  const handleMedleyCreated = (newMedley: Medley) => {
+    if (!selectedSetlist) return;
 
-  const saveMedleyName = async (medleyId: string) => {
-    if (!editingMedleyName.trim()) {
-      cancelMedleyEdit();
-      return;
-    }
-    try {
-      const updated = await updateMedley(medleyId, { name: editingMedleyName.trim() });
-      if (updated) {
-        toast.success('Nombre del medley actualizado');
-        await handleMedleyUpdated();
-      } else {
-        toast.error('No se pudo actualizar el nombre del medley');
-      }
-    } catch (err) {
-      console.error('Error actualizando medley:', err);
-      toast.error('Error al actualizar el nombre del medley');
-    }
-    setEditingMedleyId(null);
-    setEditingMedleyName('');
+    const newMedleyItem: SetlistItem = {
+      id: newMedley.id,
+      type: 'medley',
+      position: newMedley.position,
+      data: newMedley
+    };
+    
+    const updatedSetlist = {
+      ...selectedSetlist,
+      medleys: [...(selectedSetlist.medleys || []), newMedley],
+    };
+    
+    setSelectedSetlist(updatedSetlist);
+    setSetlists(prev => prev.map(s => s.id === updatedSetlist.id ? updatedSetlist : s));
   };
 
   if (loading) {
@@ -360,9 +535,7 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
 
       {!canManageSetlists && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-          <p className="text-yellow-800 text-sm">
-            Solo los miembros principales pueden gestionar canciones y setlists.
-          </p>
+          <p className="text-yellow-800 text-sm">Solo los miembros principales pueden gestionar canciones y setlists.</p>
         </div>
       )}
 
@@ -379,7 +552,6 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               required
             />
-            
             <Input
               label="Duración estimada (minutos)"
               type="number"
@@ -398,7 +570,7 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               rows={3}
-              placeholder="Descripción del setlist..."
+              placeholder="Descripción breve del setlist..."
             />
           </div>
           
@@ -413,234 +585,127 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
         </form>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Lista de Setlists */}
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h3 className="text-lg font-semibold">Setlists Disponibles</h3>
-          </div>
-          
-          {setlists.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              No hay setlists creados. Crea el primero para empezar.
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="md:col-span-1 space-y-3">
+          {setlists.map((setlist) => (
+            <div
+              key={setlist.id}
+              className={`p-4 rounded-lg cursor-pointer transition-all ${selectedSetlist?.id === setlist.id ? 'bg-blue-600 text-white shadow-lg' : 'bg-white hover:bg-gray-100'}`}
+              onClick={() => handleSelectSetlist(setlist)}
+            >
+              <h4 className={`font-bold ${selectedSetlist?.id === setlist.id ? 'text-white' : 'text-gray-800'}`}>{setlist.name}</h4>
+              <p className={`text-sm ${selectedSetlist?.id === setlist.id ? 'text-blue-100' : 'text-gray-500'}`}>
+                {(setlist.songs?.length || 0) + (setlist.medleys?.length || 0)} items
+              </p>
             </div>
-          ) : (
-            <div className="divide-y divide-gray-200">
-              {setlists.map((setlist) => (
-                <div 
-                  key={setlist.id} 
-                  className={`p-4 cursor-pointer hover:bg-gray-50 ${
-                    selectedSetlist?.id === setlist.id ? 'bg-blue-50 border-l-4 border-blue-500' : ''
-                  }`}
-                  onClick={() => setSelectedSetlist(setlist)}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <h4 className="font-medium text-gray-900">{setlist.name}</h4>
-                      {setlist.description && (
-                        <p className="text-sm text-gray-500 mt-1">{setlist.description}</p>
-                      )}
-                      <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
-                        <span>{setlist.songs?.length || 0} canciones</span>
-                        <span>{formatDuration(setlist.estimated_duration_minutes)}</span>
-                      </div>
-                    </div>
-                                         {canManageSetlists && (
-                       <div className="flex gap-2 ml-4">
-                         <button
-                           onClick={(e) => {
-                             e.stopPropagation();
-                             handleEdit(setlist);
-                           }}
-                           className="text-blue-600 hover:text-blue-900 text-sm"
-                         >
-                           Editar
-                         </button>
-                                                <button
-                         onClick={(e) => {
-                           e.stopPropagation();
-                           handleDelete(setlist);
-                         }}
-                         className="text-red-600 hover:text-red-900 text-sm"
-                       >
-                         Eliminar
-                       </button>
-                       </div>
-                     )}
-                  </div>
-                </div>
-              ))}
-            </div>
+          ))}
+          {setlists.length === 0 && !loading && (
+            <p className="text-center text-gray-500 py-4">No hay setlists. ¡Crea el primero!</p>
           )}
         </div>
 
-        {/* Detalle del Setlist Seleccionado */}
-        {selectedSetlist && (
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold">{selectedSetlist.name}</h3>
-              {selectedSetlist.description && (
-                <p className="text-sm text-gray-500 mt-1">{selectedSetlist.description}</p>
-              )}
-            </div>
-            
-            <div className="p-4">
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-medium text-gray-900">Canciones del Setlist</h4>
-                  {canManageSetlists && (
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={handleCreateMedley}
-                    >
-                      <FaPlus className="mr-1" />
-                      Crear Medley
-                    </Button>
-                  )}
-                </div>
-                {(() => {
-                  const items = getSetlistItems(selectedSetlist);
-                  if (items.length === 0) {
-                    return <p className="text-gray-500 text-sm">No hay canciones en este setlist</p>;
-                  }
-                  let globalIndex = 1;
-                  return (
-                    <div className="space-y-2">
-                      {items.map((item) => {
-                        if (item.type === 'medley') {
-                          const medley = item.data;
-                          const sortedSongs = (medley.songs || []).sort((a, b) => a.position - b.position);
-                          const medleyIndex = globalIndex;
-                          globalIndex++;
-                          return (
-                            <div key={medley.id} className="flex">
-                              <span className="text-xs font-medium text-gray-400 w-6 flex-shrink-0 flex items-start justify-center pt-1">{medleyIndex}.</span>
-                              <div className="flex-1 bg-blue-50 border-l-4 border-blue-400 rounded px-2 py-1">
-                                <div className="flex items-center mb-1 group">
-                                  {editingMedleyId === medley.id ? (
-                                    <input
-                                      type="text"
-                                      value={editingMedleyName}
-                                      onChange={e => setEditingMedleyName(e.target.value)}
-                                      onBlur={() => saveMedleyName(medley.id)}
-                                      onKeyDown={e => {
-                                        if (e.key === 'Enter') saveMedleyName(medley.id);
-                                        if (e.key === 'Escape') cancelMedleyEdit();
-                                      }}
-                                      className="font-semibold text-blue-800 text-sm bg-blue-100 rounded px-1 py-0.5 outline-none border border-blue-300 w-auto min-w-[60px]"
-                                      autoFocus
-                                    />
-                                  ) : (
-                                    <>
-                                      <span className="font-semibold text-blue-800 text-sm leading-tight cursor-pointer select-none">
-                                        {medley.name}
-                                      </span>
-                                      {canManageSetlists && (
-                                        <button
-                                          className="ml-1 text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity duration-150 p-0.5"
-                                          onClick={() => startMedleyEdit(medley)}
-                                          tabIndex={-1}
-                                          title="Editar nombre"
-                                        >
-                                          <FaEdit size={13} />
-                                        </button>
-                                      )}
-                                    </>
-                                  )}
-                                </div>
-                                <ul className="ml-1">
-                                  {sortedSongs.map((ms, idx) => (
-                                    <li key={ms.id} className="flex items-center justify-between py-0.5">
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-xs font-medium text-gray-400 w-5">{idx + 1}.</span>
-                                        <div>
-                                          <div className="font-medium text-sm leading-tight">{ms.song?.title}</div>
-                                          {ms.song?.artist && (
-                                            <div className="text-xs text-gray-500 leading-tight">{ms.song.artist}</div>
-                                          )}
-                                        </div>
-                                      </div>
-                                      {canManageSetlists && (
-                                        <button
-                                          onClick={() => removeSongFromMedley(medley.id, ms.song_id)}
-                                          className="text-red-500 hover:text-red-700 text-xs px-1 py-0.5"
-                                        >
-                                          Quitar
-                                        </button>
-                                      )}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            </div>
-                          );
-                        } else {
-                          const setlistSong = item.data;
-                          const currentIndex = globalIndex;
-                          globalIndex++;
-                          return (
-                            <div key={setlistSong.id} className="flex items-center justify-between px-2 py-1 bg-gray-50 rounded">
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-medium text-gray-400 w-6">{currentIndex}.</span>
-                                <div>
-                                  <div className="font-medium text-sm leading-tight">{setlistSong.song?.title}</div>
-                                  {setlistSong.song?.artist && (
-                                    <div className="text-xs text-gray-500 leading-tight">{setlistSong.song.artist}</div>
-                                  )}
-                                </div>
-                              </div>
-                              {canManageSetlists && (
-                                <button
-                                  onClick={() => handleRemoveSongFromSetlist(selectedSetlist.id, setlistSong.song_id)}
-                                  className="text-red-500 hover:text-red-700 text-xs px-1 py-0.5"
-                                >
-                                  Quitar
-                                </button>
-                              )}
-                            </div>
-                          );
-                        }
-                      })}
+        <div className="md:col-span-2">
+          {selectedSetlist ? (
+             <div className="bg-white p-6 rounded-lg shadow-md">
+                <div className="flex justify-between items-start mb-4">
+                    <div>
+                        <h3 className="text-xl font-bold text-gray-800">{selectedSetlist.name}</h3>
+                        <p className="text-sm text-gray-500">{selectedSetlist.description}</p>
                     </div>
-                  );
-                })()}
-              </div>
-
-              {/* Añadir canciones */}
-              <div>
-                <h4 className="font-medium text-gray-900 mb-2">Añadir Canciones</h4>
-                {songs.length === 0 ? (
-                  <p className="text-gray-500 text-sm">No hay canciones disponibles en el pool</p>
-                ) : (
-                  <div className="space-y-2 max-h-40 overflow-y-auto">
-                    {getAvailableSongs(selectedSetlist).map((song) => (
-                      <div key={song.id} className="flex items-center justify-between p-2 border rounded">
-                        <div>
-                          <div className="font-medium">{song.title}</div>
-                          {song.artist && (
-                            <div className="text-sm text-gray-500">{song.artist}</div>
-                          )}
+                     {canManageSetlists && (
+                        <div className="flex gap-2">
+                           <Button variant="primary" onClick={() => setShowCreateMedleyModal(true)}>
+                               <FaPlus className="mr-1" /> Crear Medley
+                           </Button>
+                            <Button variant="secondary" onClick={() => handleEdit(selectedSetlist)}>
+                                <FaEdit className="mr-2" /> Editar
+                            </Button>
+                            <Button variant="danger" onClick={() => handleDelete(selectedSetlist)}>
+                                Eliminar
+                            </Button>
                         </div>
-                                                 {canManageSetlists && (
-                           <button
-                             onClick={() => handleAddSongToSetlist(selectedSetlist.id, song.id)}
-                             className="text-blue-600 hover:text-blue-900 text-sm"
-                           >
-                             Añadir
-                           </button>
-                         )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                     )}
+                 </div>
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+               <div>
+                 <h4 className="font-semibold text-gray-700 mb-3">Canciones en el Setlist</h4>
+                 <div className="space-y-2">
+                   <DndContext 
+                     sensors={sensors}
+                     collisionDetection={closestCenter}
+                     onDragEnd={handleDragEnd}
+                   >
+                     <SortableContext 
+                       items={setlistItems.map(item => item.id)}
+                       strategy={verticalListSortingStrategy}
+                     >
+                       {setlistItems.map(item => (
+                         <SortableSetlistItem
+                           key={item.id}
+                           item={item}
+                           canManageSetlists={canManageSetlists}
+                           songs={songs}
+                           onRemoveSong={handleRemoveSongFromSetlist}
+                           onSongAddedToMedley={handleSongAddedToMedley}
+                           onSongRemovedFromMedley={handleSongRemovedFromMedley}
+                           onMedleyRenamed={handleMedleyRenamed}
+                           onMedleyDeleted={handleMedleyDeleted}
+                         />
+                       ))}
+                     </SortableContext>
+                   </DndContext>
+                   {setlistItems.length === 0 && (
+                     <p className="text-gray-500 text-sm py-4 text-center">
+                       Este setlist está vacío.
+                     </p>
+                   )}
+                 </div>
+               </div>
+   
+               {canManageSetlists && (
+                 <div>
+                   <h4 className="font-semibold text-gray-700 mb-3">Añadir Canción al Setlist</h4>
+                   <Input
+                    placeholder="Buscar canción..."
+                    value={addSongSearch}
+                    onChange={(e) => setAddSongSearch(e.target.value)}
+                    className="mb-2"
+                   />
+                   <div className="space-y-2 max-h-80 overflow-y-auto pr-2">
+                    {getAvailableSongs(selectedSetlist)
+                      .filter(song => 
+                        song.title.toLowerCase().includes(addSongSearch.toLowerCase()) ||
+                        song.artist?.toLowerCase().includes(addSongSearch.toLowerCase())
+                      )
+                      .map(song => (
+                       <div key={song.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-md">
+                         <div>
+                           <p className="font-medium text-sm">{song.title}</p>
+                           <p className="text-xs text-gray-500">{song.artist}</p>
+                         </div>
+                         <Button onClick={() => handleAddSongToSetlist(selectedSetlist.id, song.id)}>
+                            <FaPlus />
+                         </Button>
+                       </div>
+                     ))}
+                     {getAvailableSongs(selectedSetlist).length === 0 && (
+                       <p className="text-sm text-gray-500 text-center py-4">
+                         Todas las canciones ya están en este setlist.
+                       </p>
+                     )}
+                   </div>
+                 </div>
+               )}
+             </div>
+           </div>
+          ) : (
+            <div className="text-center py-12 text-gray-500">
+              <p>Selecciona un setlist para ver los detalles</p>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* Delete Confirmation Modal */}
       {showDeleteModal && setlistToDelete && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full">
@@ -671,14 +736,16 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
         </div>
       )}
 
-      {/* Modal para crear medley */}
       {showCreateMedleyModal && selectedSetlist && (
         <CreateMedleyModal
           isOpen={showCreateMedleyModal}
           onClose={() => setShowCreateMedleyModal(false)}
           setlistId={selectedSetlist.id}
-          availableSongs={getAvailableSongsForMedley(selectedSetlist)}
-          onMedleyCreated={handleMedleyCreated}
+          availableSongs={getAvailableSongs(selectedSetlist)}
+          onMedleyCreated={(newMedley) => {
+            handleMedleyCreated(newMedley);
+            setShowCreateMedleyModal(false);
+          }}
         />
       )}
     </div>

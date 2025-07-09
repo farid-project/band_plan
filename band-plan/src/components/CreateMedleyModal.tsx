@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Song } from '../types';
+import { Song, Medley } from '../types';
 import { createMedley } from '../lib/setlistUtils';
 import { toast } from 'react-hot-toast';
 import Button from './Button';
@@ -10,7 +10,7 @@ interface CreateMedleyModalProps {
   onClose: () => void;
   setlistId: string;
   availableSongs: Song[];
-  onMedleyCreated: () => void;
+  onMedleyCreated: (newMedley: Medley) => void;
 }
 
 export default function CreateMedleyModal({
@@ -20,9 +20,10 @@ export default function CreateMedleyModal({
   availableSongs,
   onMedleyCreated
 }: CreateMedleyModalProps) {
-  const [medleyName, setMedleyName] = useState('');
+  const [name, setName] = useState('');
   const [selectedSongIds, setSelectedSongIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const handleSongToggle = (songId: string) => {
     setSelectedSongIds(prev =>
@@ -31,26 +32,35 @@ export default function CreateMedleyModal({
   };
 
   const handleCreateMedley = async () => {
-    if (!medleyName.trim()) {
-      toast.error('El nombre del medley es obligatorio');
-      return;
-    }
-
     if (selectedSongIds.length < 2) {
       toast.error('Selecciona al menos dos canciones para el medley');
       return;
     }
 
+    let finalMedleyName = name.trim();
+
+    if (!finalMedleyName) {
+      const selectedSongs = selectedSongIds
+        .map(id => availableSongs.find(song => song.id === id))
+        .filter((s): s is Song => !!s);
+      finalMedleyName = selectedSongs.map(song => song.title).join(' | ');
+    }
+
+    if (!finalMedleyName) {
+      toast.error("No se pudo generar el nombre del medley.");
+      return;
+    }
+
     setLoading(true);
     try {
-      const medley = await createMedley(setlistId, medleyName, 0, selectedSongIds);
-      if (medley) {
-        toast.success('Medley creado exitosamente');
-        onMedleyCreated();
+      const newMedley = await createMedley(setlistId, finalMedleyName, 0, selectedSongIds);
+      if (newMedley) {
+        toast.success('Medley creado con éxito');
+        onMedleyCreated(newMedley);
         handleClose();
       }
     } catch (error) {
-      console.error('Error al crear el medley:', error);
+      console.error("Error creating medley:", error);
       toast.error('Error al crear el medley');
     } finally {
       setLoading(false);
@@ -58,8 +68,9 @@ export default function CreateMedleyModal({
   };
 
   const handleClose = () => {
-    setMedleyName('');
+    setName('');
     setSelectedSongIds([]);
+    setSearchTerm('');
     onClose();
   };
 
@@ -70,41 +81,51 @@ export default function CreateMedleyModal({
       <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-lg max-h-[80vh] overflow-y-auto">
         <h3 className="text-lg font-semibold mb-4">Crear Nuevo Medley</h3>
         
-        <div className="mb-4">
+        <div className="space-y-4">
           <Input
             label="Nombre del Medley"
-            value={medleyName}
-            onChange={(e) => setMedleyName(e.target.value)}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
             placeholder="Ej: Medley de Rock Clásico"
             autoFocus
           />
-        </div>
-
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Seleccionar Canciones ({selectedSongIds.length} seleccionadas)
+          <label className="block text-sm font-medium text-gray-700">
+            Canciones (opcional)
           </label>
-          <div className="max-h-60 overflow-y-auto border rounded p-2">
-            {availableSongs.length === 0 ? (
-              <p className="text-gray-500 text-sm">No hay canciones disponibles</p>
-            ) : (
-              availableSongs.map((song) => (
-                <label key={song.id} className="flex items-center gap-2 py-1 hover:bg-gray-50 rounded px-1">
-                  <input
-                    type="checkbox"
-                    checked={selectedSongIds.includes(song.id)}
-                    onChange={() => handleSongToggle(song.id)}
-                    className="rounded"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm truncate">{song.title}</div>
-                    {song.artist && (
-                      <div className="text-xs text-gray-500 truncate">{song.artist}</div>
-                    )}
+          <div className="border rounded-md p-2">
+            <Input
+              placeholder="Buscar canción para añadir..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="mb-2"
+            />
+            <div className="max-h-40 overflow-y-auto">
+              {availableSongs
+                .filter(song => 
+                  song.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                  song.artist?.toLowerCase().includes(searchTerm.toLowerCase())
+                )
+                .map((song) => (
+                <div key={song.id} className="flex items-center justify-between p-2 hover:bg-gray-50">
+                  <div>
+                    <label className="flex items-center gap-2 py-1 hover:bg-gray-50 rounded px-1">
+                      <input
+                        type="checkbox"
+                        checked={selectedSongIds.includes(song.id)}
+                        onChange={() => handleSongToggle(song.id)}
+                        className="rounded"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">{song.title}</div>
+                        {song.artist && (
+                          <div className="text-xs text-gray-500 truncate">{song.artist}</div>
+                        )}
+                      </div>
+                    </label>
                   </div>
-                </label>
-              ))
-            )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -120,7 +141,7 @@ export default function CreateMedleyModal({
             variant="primary"
             onClick={handleCreateMedley}
             loading={loading}
-            disabled={selectedSongIds.length < 2 || !medleyName.trim()}
+            disabled={selectedSongIds.length < 2}
           >
             Crear Medley
           </Button>

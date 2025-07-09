@@ -6,34 +6,43 @@ import { toast } from 'react-hot-toast';
 // Songs functions
 export async function getSongsByGroup(groupId: string): Promise<Song[] | null> {
   return safeSupabaseRequest(
-    () => supabase
-      .from('songs')
-      .select('*')
-      .eq('group_id', groupId)
-      .order('title'),
+    async () => {
+      const { data, error } = await supabase
+        .from('songs')
+        .select('*')
+        .eq('group_id', groupId)
+        .order('title');
+      return { data: data as Song[] | null, error };
+    },
     'Error al cargar las canciones'
   );
 }
 
 export async function createSong(song: Omit<Song, 'id' | 'created_at' | 'updated_at'>): Promise<Song | null> {
   return safeSupabaseRequest(
-    () => supabase
-      .from('songs')
-      .insert(song)
-      .select()
-      .single(),
+    async () => {
+      const { data, error } = await supabase
+        .from('songs')
+        .insert(song)
+        .select()
+        .single();
+      return { data: data as Song | null, error };
+    },
     'Error al crear la canción'
   );
 }
 
 export async function updateSong(id: string, updates: Partial<Song>): Promise<Song | null> {
   return safeSupabaseRequest(
-    () => supabase
-      .from('songs')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single(),
+    async () => {
+      const { data, error } = await supabase
+        .from('songs')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+      return { data: data as Song | null, error };
+    },
     'Error al actualizar la canción'
   );
 }
@@ -62,72 +71,83 @@ export async function deleteSong(id: string): Promise<boolean> {
 // Setlists functions
 export async function getSetlistsByGroup(groupId: string): Promise<Setlist[] | null> {
   return safeSupabaseRequest(
-    () => supabase
-      .from('setlists')
-      .select(`
-        *,
-        songs:setlist_songs(
+    async () => {
+      const { data, error } = await supabase
+        .from('setlists')
+        .select(`
           *,
-          song:songs(*)
-        ),
-        medleys(
-          *,
-          songs:medley_songs(
+          songs:setlist_songs(
             *,
             song:songs(*)
+          ),
+          medleys(
+            *,
+            songs:medley_songs(
+              *,
+              song:songs(*)
+            )
           )
-        )
-      `)
-      .eq('group_id', groupId)
-      .order('name'),
+        `)
+        .eq('group_id', groupId)
+        .order('name');
+      return { data: data as Setlist[] | null, error };
+    },
     'Error al cargar los setlists'
   );
 }
 
 export async function getSetlistWithSongs(setlistId: string): Promise<Setlist | null> {
   return safeSupabaseRequest(
-    () => supabase
-      .from('setlists')
-      .select(`
-        *,
-        songs:setlist_songs(
+    async () => {
+      const { data, error } = await supabase
+        .from('setlists')
+        .select(`
           *,
-          song:songs(*)
-        ),
-        medleys(
-          *,
-          songs:medley_songs(
+          songs:setlist_songs(
             *,
             song:songs(*)
+          ),
+          medleys(
+            *,
+            songs:medley_songs(
+              *,
+              song:songs(*)
+            )
           )
-        )
-      `)
-      .eq('id', setlistId)
-      .order('songs.position')
-      .single(),
+        `)
+        .eq('id', setlistId)
+        .single();
+      return { data: data as Setlist | null, error };
+    },
     'Error al cargar el setlist'
   );
 }
 
 export async function createSetlist(setlist: Omit<Setlist, 'id' | 'created_at' | 'updated_at'>): Promise<Setlist | null> {
   return safeSupabaseRequest(
-    () => supabase
-      .from('setlists')
-      .insert(setlist)
-      .select()
-      .single(),
+    async () => {
+      const { data, error } = await supabase
+        .from('setlists')
+        .insert(setlist)
+        .select()
+        .single();
+      return { data: data as Setlist | null, error };
+    },
     'Error al crear el setlist'
   );
 }
 
 export async function updateSetlist(id: string, updates: Partial<Setlist>): Promise<Setlist | null> {
   return safeSupabaseRequest(
-    () => supabase
-      .from('setlists')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single(),
+    async () => {
+      const { data, error } = await supabase
+        .from('setlists')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+      return { data: data as Setlist | null, error };
+    },
     'Error al actualizar el setlist'
   );
 }
@@ -234,11 +254,13 @@ export async function updateSetlistSongPosition(
 
 export async function removeSongFromSetlist(setlistId: string, songId: string): Promise<boolean> {
   try {
-    const { error } = await supabase
+    const { error, count } = await supabase
       .from('setlist_songs')
       .delete()
       .eq('setlist_id', setlistId)
       .eq('song_id', songId);
+    
+    console.log('Resultado de Supabase al eliminar:', { error, count });
     
     if (error) {
       console.error('Error al eliminar la canción del setlist:', error);
@@ -256,23 +278,10 @@ export async function removeSongFromSetlist(setlistId: string, songId: string): 
 
 export async function reorderSetlistSongs(setlistId: string, songPositions: { songId: string; position: number }[]): Promise<boolean> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      toast.error('No se pudo obtener la información del usuario');
-      return false;
-    }
-
-    // Use a transaction to update all positions at once
-    const updates = songPositions.map(({ songId, position }) => ({
-      setlist_id: setlistId,
-      song_id: songId,
-      position,
-      created_by: user.id
-    }));
-
-    const { error } = await supabase
-      .from('setlist_songs')
-      .upsert(updates, { onConflict: 'setlist_id,song_id' });
+    const { error } = await supabase.rpc('reorder_setlist_songs', {
+      p_setlist_id: setlistId,
+      p_song_positions: songPositions,
+    });
 
     if (error) {
       console.error('Error al reordenar las canciones del setlist:', error);
@@ -291,10 +300,13 @@ export async function reorderSetlistSongs(setlistId: string, songPositions: { so
 // Event setlist functions
 export async function assignSetlistToEvent(eventId: number, setlistId: string | null): Promise<boolean> {
   const result = await safeSupabaseRequest(
-    () => supabase
-      .from('events')
-      .update({ setlist_id: setlistId })
-      .eq('id', eventId),
+    async () => {
+      const { data, error } = await supabase
+        .from('events')
+        .update({ setlist_id: setlistId })
+        .eq('id', eventId);
+      return { data, error };
+    },
     'Error al asignar el setlist al evento'
   );
   return result !== null;
@@ -302,27 +314,30 @@ export async function assignSetlistToEvent(eventId: number, setlistId: string | 
 
 export async function getEventWithSetlist(eventId: number): Promise<any | null> {
   return safeSupabaseRequest(
-    () => supabase
-      .from('events')
-      .select(`
-        *,
-        setlist:setlists(
+    async () => {
+      const { data, error } = await supabase
+        .from('events')
+        .select(`
           *,
-          songs:setlist_songs(
+          setlist:setlists(
             *,
-            song:songs(*)
-          ),
-          medleys(
-            *,
-            songs:medley_songs(
+            songs:setlist_songs(
               *,
               song:songs(*)
+            ),
+            medleys(
+              *,
+              songs:medley_songs(
+                *,
+                song:songs(*)
+              )
             )
           )
-        )
-      `)
-      .eq('id', eventId)
-      .single(),
+        `)
+        .eq('id', eventId)
+        .single();
+      return { data, error };
+    },
     'Error al cargar el evento con setlist'
   );
 }
@@ -334,55 +349,67 @@ export async function createMedley(
   position: number,
   songIds: string[]
 ): Promise<Medley | null> {
-  try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      toast.error('No se pudo obtener la información del usuario');
-      return null;
-    }
-
-    // Crear el medley
-    const { data: medley, error: medleyError } = await supabase
-      .from('medleys')
-      .insert({
-        setlist_id: setlistId,
-        name,
-        position,
-        created_by: user.id
-      })
-      .select()
-      .single();
-
-    if (medleyError) {
-      console.error('Error al crear el medley:', medleyError);
-      toast.error('Error al crear el medley');
-      return null;
-    }
-
-    // Añadir las canciones al medley
-    const medleySongs = songIds.map((songId, index) => ({
-      medley_id: medley.id,
-      song_id: songId,
-      position: index + 1,
-      created_by: user.id
-    }));
-
-    const { error: songsError } = await supabase
-      .from('medley_songs')
-      .insert(medleySongs);
-
-    if (songsError) {
-      console.error('Error al añadir canciones al medley:', songsError);
-      toast.error('Error al añadir canciones al medley');
-      return null;
-    }
-
-    return medley;
-  } catch (error) {
-    console.error('Error al crear el medley:', error);
-    toast.error('Error al crear el medley');
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    toast.error('No se pudo obtener la información del usuario');
     return null;
   }
+  
+  const createdMedley = await safeSupabaseRequest<Medley>(
+    async () => {
+      const { data: medleyData, error: medleyError } = await supabase
+        .from('medleys')
+        .insert({ setlist_id: setlistId, name, position, created_by: user.id })
+        .select()
+        .single();
+
+      if (medleyError) throw medleyError;
+
+      if (songIds.length > 0) {
+        const medleySongsData = songIds.map((song_id, index) => ({
+          medley_id: medleyData.id,
+          song_id,
+          position: index + 1,
+          created_by: user.id
+        }));
+
+        const { error: songsError } = await supabase
+          .from('medley_songs')
+          .insert(medleySongsData);
+
+        if (songsError) throw songsError;
+      }
+
+      return { data: medleyData, error: null };
+    },
+    'Error al crear el medley'
+  );
+
+  if (createdMedley) {
+    return getMedleyById(createdMedley.id);
+  }
+
+  return null;
+}
+
+export async function getMedleyById(medleyId: string): Promise<Medley | null> {
+  return safeSupabaseRequest(
+    async () => {
+      const { data, error } = await supabase
+        .from('medleys')
+        .select(`
+          *,
+          songs:medley_songs(
+            *,
+            song:songs(*)
+          )
+        `)
+        .eq('id', medleyId)
+        .single();
+      return { data: data as Medley | null, error };
+    },
+    'Error al cargar el medley'
+  );
 }
 
 export async function updateMedley(
@@ -390,12 +417,15 @@ export async function updateMedley(
   updates: Partial<Medley>
 ): Promise<Medley | null> {
   return safeSupabaseRequest(
-    () => supabase
-      .from('medleys')
-      .update(updates)
-      .eq('id', medleyId)
-      .select()
-      .single(),
+    async () => {
+      const { data, error } = await supabase
+        .from('medleys')
+        .update(updates)
+        .eq('id', medleyId)
+        .select()
+        .single();
+      return { data: data as Medley | null, error };
+    },
     'Error al actualizar el medley'
   );
 }
@@ -485,29 +515,23 @@ export async function reorderMedleySongs(
   songPositions: { songId: string; position: number }[]
 ): Promise<boolean> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      toast.error('No se pudo obtener la información del usuario');
-      return false;
-    }
-
-    const updates = songPositions.map(({ songId, position }) => ({
-      medley_id: medleyId,
-      song_id: songId,
-      position,
-      created_by: user.id
-    }));
-
-    const { error } = await supabase
-      .from('medley_songs')
-      .upsert(updates, { onConflict: 'medley_id,song_id' });
+    const updates = songPositions.map(({ songId, position }) =>
+      supabase
+        .from('medley_songs')
+        .update({ position })
+        .eq('medley_id', medleyId)
+        .eq('song_id', songId)
+    );
+    
+    const results = await Promise.all(updates);
+    const error = results.find(res => res.error);
 
     if (error) {
       console.error('Error al reordenar las canciones del medley:', error);
       toast.error('Error al reordenar las canciones del medley');
       return false;
     }
-
+    
     return true;
   } catch (error) {
     console.error('Error al reordenar las canciones del medley:', error);
@@ -521,61 +545,27 @@ export async function reorderSetlistItems(
   items: { type: 'song' | 'medley'; id: string; position: number }[]
 ): Promise<boolean> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      toast.error('No se pudo obtener la información del usuario');
+    const p_items = items.map(item => ({
+      item_id: item.id,
+      item_type: item.type,
+      new_position: item.position,
+    }));
+
+    const { error } = await supabase.rpc('reorder_setlist_items', {
+      p_setlist_id: setlistId,
+      p_items,
+    });
+
+    if (error) {
+      console.error('Error al reordenar los items del setlist:', error);
+      toast.error(`Error al reordenar: ${error.message}`);
       return false;
-    }
-
-    // Actualizar posiciones de canciones
-    const songUpdates = items
-      .filter(item => item.type === 'song')
-      .map(item => ({
-        setlist_id: setlistId,
-        song_id: item.id,
-        position: item.position,
-        created_by: user.id
-      }));
-
-    if (songUpdates.length > 0) {
-      const { error: songError } = await supabase
-        .from('setlist_songs')
-        .upsert(songUpdates, { onConflict: 'setlist_id,song_id' });
-
-      if (songError) {
-        console.error('Error al reordenar las canciones:', songError);
-        toast.error('Error al reordenar las canciones');
-        return false;
-      }
-    }
-
-    // Actualizar posiciones de medleys
-    const medleyUpdates = items
-      .filter(item => item.type === 'medley')
-      .map(item => ({
-        id: item.id,
-        position: item.position
-      }));
-
-    if (medleyUpdates.length > 0) {
-      for (const update of medleyUpdates) {
-        const { error: medleyError } = await supabase
-          .from('medleys')
-          .update({ position: update.position })
-          .eq('id', update.id);
-
-        if (medleyError) {
-          console.error('Error al reordenar los medleys:', medleyError);
-          toast.error('Error al reordenar los medleys');
-          return false;
-        }
-      }
     }
 
     return true;
   } catch (error) {
-    console.error('Error al reordenar los elementos del setlist:', error);
-    toast.error('Error al reordenar los elementos del setlist');
+    console.error('Error al reordenar los items del setlist:', error);
+    toast.error('Ocurrió un error inesperado al reordenar.');
     return false;
   }
 } 

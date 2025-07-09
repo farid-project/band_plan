@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Event, GroupMember, Role, Setlist } from '../types';
+import { Event, GroupMember, Setlist } from '../types';
 import { Calendar, Clock, Trash2, Edit2, Users, MapPin, Music } from 'lucide-react';
 import { format, parseISO, isFuture, startOfDay } from 'date-fns';
 import { toast } from 'react-hot-toast';
@@ -8,7 +8,6 @@ import Button from './Button';
 import EventModal from './EventModal';
 import { safeSupabaseRequest } from '../lib/supabaseUtils';
 import { updateGroupCalendar } from '../utils/calendarSync';
-import { getSetlistsByGroup } from '../lib/setlistUtils';
 
 interface EventsListProps {
   groupId: string;
@@ -40,7 +39,6 @@ export default function EventsList({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
-  const [setlists, setSetlists] = useState<Setlist[]>([]);
 
   useEffect(() => {
     fetchEvents();
@@ -49,23 +47,28 @@ export default function EventsList({
   const fetchEvents = async () => {
     try {
       setLoading(true);
-      const [eventsData, setlistsData] = await Promise.all([
-        supabase
-          .from('events')
-          .select('*')
-          .eq('group_id', groupId)
-          .order('date')
-          .order('time'),
-        getSetlistsByGroup(groupId)
-      ]);
+      const { data: eventsData, error } = await supabase
+        .from('events')
+        .select(`
+          *,
+          setlist:setlists (
+            id,
+            name,
+            songs:setlist_songs(count),
+            medleys(count)
+          )
+        `)
+        .eq('group_id', groupId)
+        .order('date')
+        .order('time');
 
-      if (eventsData.error) {
-        throw eventsData.error;
+      if (error) {
+        throw error;
       }
 
-      if (eventsData.data) {
+      if (eventsData) {
         const eventsWithMembers = await Promise.all(
-          eventsData.data.map(async (event) => {
+          eventsData.map(async (event) => {
             const { data: eventMembers, error: membersError } = await supabase
               .from('event_members')
               .select('group_member_id, user_id')
@@ -95,10 +98,6 @@ export default function EventsList({
         );
 
         setEvents(eventsWithMembers);
-      }
-
-      if (setlistsData) {
-        setSetlists(setlistsData);
       }
     } catch (error) {
       console.error('Error fetching events:', error);
@@ -390,12 +389,6 @@ export default function EventsList({
                                         <Users className="w-3 h-3 mr-1" />
                                         {event.members.length}
                                       </div>
-                                      {event.setlist_id && (
-                                        <div className="flex items-center">
-                                          <Music className="w-3 h-3 mr-1" />
-                                          {setlists.find(s => s.id === event.setlist_id)?.name || 'Setlist'}
-                                        </div>
-                                      )}
                                     </div>
                                   </div>
                                 </div>
