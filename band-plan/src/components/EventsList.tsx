@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Event, GroupMember, Setlist } from '../types';
+import { Event, GroupMember, Setlist, Song } from '../types';
 import { Calendar, Clock, Trash2, Edit2, Users, MapPin, Music } from 'lucide-react';
 import { format, parseISO, isFuture, startOfDay } from 'date-fns';
 import { toast } from 'react-hot-toast';
@@ -8,6 +8,8 @@ import Button from './Button';
 import EventModal from './EventModal';
 import { safeSupabaseRequest } from '../lib/supabaseUtils';
 import { updateGroupCalendar } from '../utils/calendarSync';
+import SetlistPreviewModal from './SetlistPreviewModal';
+
 
 interface EventsListProps {
   groupId: string;
@@ -39,6 +41,9 @@ export default function EventsList({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
+  // Estado para el modal de setlist preview
+  const [previewSetlist, setPreviewSetlist] = useState<Setlist | null>(null);
+  const [previewSetlistSongs, setPreviewSetlistSongs] = useState<Song[]>([]);
 
   useEffect(() => {
     fetchEvents();
@@ -111,6 +116,8 @@ export default function EventsList({
     }
   };
 
+
+
   const handleDelete = async (eventId: number) => {
     if (!window.confirm('¿Estás seguro de que quieres eliminar este evento?')) {
       return;
@@ -162,6 +169,49 @@ export default function EventsList({
   const handleEdit = (event: Event) => {
     setSelectedEvent(event);
     setIsEditModalOpen(true);
+  };
+
+  // Función para abrir el preview con el setlist completo
+  const handlePreviewSetlist = async (setlist: Setlist | undefined) => {
+    if (!setlist) {
+      console.warn('Se intentó abrir un preview con un setlist undefined');
+      return;
+    }
+    
+    try {
+      // Usar el setlist directamente ya que ya tenemos toda la información
+      setPreviewSetlist(setlist);
+      
+      // Preparar las canciones para el modal
+      const setlistSongs: Song[] = [];
+      
+      // Agregar canciones individuales
+      if (setlist.songs && setlist.songs.length > 0) {
+        setlist.songs.forEach((item: any) => {
+          if (item.song) {
+            setlistSongs.push(item.song);
+          }
+        });
+      }
+      
+      // Agregar canciones de medleys
+      if (setlist.medleys && setlist.medleys.length > 0) {
+        setlist.medleys.forEach((medley: any) => {
+          if (medley.songs && medley.songs.length > 0) {
+            medley.songs.forEach((item: any) => {
+              if (item.song) {
+                setlistSongs.push(item.song);
+              }
+            });
+          }
+        });
+      }
+      
+      setPreviewSetlistSongs(setlistSongs);
+    } catch (error) {
+      console.error('Error al cargar el setlist completo:', error);
+      toast.error('Error al cargar el setlist');
+    }
   };
 
   if (loading) {
@@ -395,8 +445,11 @@ export default function EventsList({
                                       </div>
                                       {event.setlist ? (
                                         <div className="flex items-center">
-                                          <Music className="w-3 h-3 mr-1" />
-                                          <span className="text-indigo-600 font-medium">
+                                          <Music className="w-3 h-3 mr-1 text-blue-500" />
+                                          <span 
+                                            className="text-indigo-600 font-medium cursor-pointer hover:underline"
+                                            onClick={() => event.setlist && handlePreviewSetlist(event.setlist)}
+                                          >
                                             {event.setlist.name}
                                           </span>
                                           <span className="text-gray-400 ml-1">
@@ -483,6 +536,13 @@ export default function EventsList({
           members={members}
         />
       )}
+      
+      <SetlistPreviewModal
+        isOpen={!!previewSetlist}
+        onClose={() => setPreviewSetlist(null)}
+        setlist={previewSetlist as Setlist}
+        songs={previewSetlistSongs}
+      />
     </div>
   );
 }
