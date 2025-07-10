@@ -1,6 +1,6 @@
-import React from 'react';
-import { Setlist } from '../types';
-import { X, Music } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Setlist, Medley, SetlistSong } from '../types';
+import { X, Music, ChevronDown } from 'lucide-react';
 
 interface SetlistPreviewModalProps {
   isOpen: boolean;
@@ -8,10 +8,55 @@ interface SetlistPreviewModalProps {
   setlist: Setlist | null;
 }
 
+interface MedleyItemProps {
+  medley: Medley;
+  itemNumber: number;
+  showArtists: boolean;
+}
+
+const MedleyItem: React.FC<MedleyItemProps> = ({ medley, itemNumber, showArtists }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const songCount = medley.songs?.length || 0;
+
+  return (
+    <div className="bg-slate-50 rounded-lg p-2 my-1 transition-all duration-300">
+      <div 
+        className="flex items-center space-x-3 text-sm group cursor-pointer"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <span className="text-gray-400 font-mono w-5 text-right pt-1 self-start">{itemNumber}.</span>
+        <div className="flex-grow">
+          <p className="text-indigo-600 font-bold group-hover:text-indigo-800 transition-colors">{medley.name}</p>
+          {!isExpanded && (
+            <p className="text-xs text-gray-400">{songCount} {songCount === 1 ? 'canción' : 'canciones'}</p>
+          )}
+        </div>
+        <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
+      </div>
+      <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isExpanded ? 'max-h-96' : 'max-h-0'}`}>
+        <div className="pl-8 pt-2 space-y-1">
+          {medley.songs?.map((item: any, songIndex: number) => (
+            <div key={`medley-song-${item.song?.id || songIndex}`} className="flex items-baseline space-x-3 text-sm group py-1 pl-5">
+              <span className="text-gray-400 font-mono w-5 text-right">{songIndex + 1}.</span>
+              <div>
+                <p className="text-gray-800 font-medium group-hover:text-indigo-600 transition-colors">{item.song?.title || 'N/A'}</p>
+                <p className={`text-gray-500 text-xs transition-all duration-300 ease-in-out ${showArtists && item.song?.artist ? 'opacity-100 h-4' : 'opacity-0 h-0'}`}>
+                  {item.song?.artist}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const SetlistPreviewModal: React.FC<SetlistPreviewModalProps> = ({ isOpen, onClose, setlist }) => {
+  const [showArtists, setShowArtists] = useState(true);
   return (
     <div 
-      className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+      className={`fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
       onClick={onClose}
     >
       <div 
@@ -27,9 +72,19 @@ const SetlistPreviewModal: React.FC<SetlistPreviewModalProps> = ({ isOpen, onClo
                 </div>
                 <h2 className="text-2xl font-bold text-gray-900 truncate">{setlist.name}</h2>
               </div>
-              <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
-                <X className="w-6 h-6" />
-              </button>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center space-x-2">
+                  <label htmlFor="showArtists" className="text-sm font-medium text-gray-600">Artistas</label>
+                  <button 
+                    onClick={() => setShowArtists(!showArtists)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${showArtists ? 'bg-indigo-600' : 'bg-gray-200'}`}>
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${showArtists ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+                <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
             </div>
 
             <div className="p-6 overflow-y-auto flex-grow">
@@ -38,49 +93,48 @@ const SetlistPreviewModal: React.FC<SetlistPreviewModalProps> = ({ isOpen, onClo
               )}
 
               {(() => {
-                const songs = setlist.songs || [];
-                const medleys = setlist.medleys || [];
-                const totalItems = (songs.length || 0) + (medleys.reduce((acc, m) => acc + (m.songs?.length || 0), 0) || 0);
+                const combinedItems = useMemo(() => {
+                  if (!setlist) return [];
+
+                  const songs: (SetlistSong & { type: 'song' })[] = (setlist.songs || []).map(s => ({ ...s, type: 'song' as const }));
+                  const medleys: (Medley & { type: 'medley' })[] = (setlist.medleys || []).map(m => ({ ...m, type: 'medley' as const }));
+                  
+                  const allItems: ((SetlistSong & { type: 'song' }) | (Medley & { type: 'medley' }))[] = [...songs, ...medleys];
+
+                  return allItems.sort((a, b) => a.position - b.position);
+                }, [setlist]);
+
+                const totalItems = combinedItems.length;
                 const columns = totalItems > 10 ? 'grid-cols-2' : 'grid-cols-1';
 
-                return (
-                  <>
-                    <div className={`grid ${columns} gap-x-8`}>
-                      {songs.map((item: any, index: number) => (
-                        <div key={`song-${item.song?.id || index}`} className="flex items-baseline space-x-3 text-sm group py-1">
-                          <span className="text-gray-400 font-mono w-5 text-right">{index + 1}.</span>
-                          <div>
-                            <p className="text-gray-800 font-medium group-hover:text-indigo-600 transition-colors">{item.song?.title || 'N/A'}</p>
-                            {item.song?.artist && (
-                              <p className="text-gray-500 text-xs">{item.song.artist}</p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                      {medleys.map((medley: any, medleyIndex: number) => (
-                        <div key={`medley-${medley.id || medleyIndex}`} className="mt-4 col-span-1">
-                          <h4 className="font-bold text-indigo-600 mb-1 truncate">{medley.name}</h4>
-                          {medley.songs.map((item: any, songIndex: number) => (
-                            <div key={`medley-song-${item.song?.id || songIndex}`} className="flex items-baseline space-x-3 text-sm group py-1 pl-5">
-                              <span className="text-gray-400 font-mono w-5 text-right">{songIndex + 1}.</span>
-                              <div>
-                                <p className="text-gray-800 font-medium group-hover:text-indigo-600 transition-colors">{item.song?.title || 'N/A'}</p>
-                                {item.song?.artist && (
-                                  <p className="text-gray-500 text-xs">{item.song.artist}</p>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ))}
+                if (totalItems === 0) {
+                  return (
+                    <div className="text-center py-10">
+                      <p className="text-gray-500">Este setlist está vacío.</p>
                     </div>
+                  );
+                }
 
-                    {totalItems === 0 && (
-                      <div className="text-center py-10">
-                        <p className="text-gray-500">Este setlist está vacío.</p>
-                      </div>
-                    )}
-                  </>
+                return (
+                  <div className={`grid ${columns} gap-x-8`}>
+                    {combinedItems.map((item, index) => {
+                      if (item.type === 'medley') {
+                        return <MedleyItem key={`medley-${item.id}`} medley={item} itemNumber={index + 1} showArtists={showArtists} />;
+                      } else {
+                        return (
+                          <div key={`song-${item.song?.id || index}`} className="flex items-baseline space-x-3 text-sm group py-1 min-h-[3.25rem]">
+                            <span className="text-gray-400 font-mono w-5 text-right">{index + 1}.</span>
+                            <div>
+                              <p className="text-gray-800 font-medium group-hover:text-indigo-600 transition-colors">{item.song?.title || 'N/A'}</p>
+                              <p className={`text-gray-500 text-xs transition-all duration-300 ease-in-out ${showArtists && item.song?.artist ? 'opacity-100 h-4' : 'opacity-0 h-0'}`}>
+                                {item.song?.artist}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      }
+                    })}
+                  </div>
                 );
               })()}
             </div>
