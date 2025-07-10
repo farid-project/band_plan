@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Event, GroupMember, Setlist, Song } from '../types';
+import { Event, GroupMember, Setlist } from '../types';
 import { Calendar, Clock, Trash2, Edit2, Users, MapPin, Music } from 'lucide-react';
 import { format, parseISO, isFuture, startOfDay } from 'date-fns';
 import { toast } from 'react-hot-toast';
@@ -43,7 +43,6 @@ export default function EventsList({
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
   // Estado para el modal de setlist preview
   const [previewSetlist, setPreviewSetlist] = useState<Setlist | null>(null);
-  const [previewSetlistSongs, setPreviewSetlistSongs] = useState<Song[]>([]);
 
   useEffect(() => {
     fetchEvents();
@@ -59,12 +58,8 @@ export default function EventsList({
           setlist:setlists (
             id,
             name,
-            songs:setlist_songs(
-              id
-            ),
-            medleys(
-              id
-            )
+            songs:setlist_songs(id),
+            medleys(id)
           )
         `)
         .eq('group_id', groupId)
@@ -171,43 +166,28 @@ export default function EventsList({
     setIsEditModalOpen(true);
   };
 
-  // Función para abrir el preview con el setlist completo
   const handlePreviewSetlist = async (setlist: Setlist | undefined) => {
     if (!setlist) {
       console.warn('Se intentó abrir un preview con un setlist undefined');
       return;
     }
-    
+
     try {
-      // Usar el setlist directamente ya que ya tenemos toda la información
-      setPreviewSetlist(setlist);
-      
-      // Preparar las canciones para el modal
-      const setlistSongs: Song[] = [];
-      
-      // Agregar canciones individuales
-      if (setlist.songs && setlist.songs.length > 0) {
-        setlist.songs.forEach((item: any) => {
-          if (item.song) {
-            setlistSongs.push(item.song);
-          }
-        });
+      const { data: fullSetlist, error } = await supabase
+        .from('setlists')
+        .select(`
+          *,
+          songs: setlist_songs(*, song: songs(*)),
+          medleys: medleys(*, songs: medley_songs(*, song: songs(*)))
+        `)
+        .eq('id', setlist.id)
+        .single();
+
+      if (error) throw error;
+
+      if (fullSetlist) {
+        setPreviewSetlist(fullSetlist as Setlist);
       }
-      
-      // Agregar canciones de medleys
-      if (setlist.medleys && setlist.medleys.length > 0) {
-        setlist.medleys.forEach((medley: any) => {
-          if (medley.songs && medley.songs.length > 0) {
-            medley.songs.forEach((item: any) => {
-              if (item.song) {
-                setlistSongs.push(item.song);
-              }
-            });
-          }
-        });
-      }
-      
-      setPreviewSetlistSongs(setlistSongs);
     } catch (error) {
       console.error('Error al cargar el setlist completo:', error);
       toast.error('Error al cargar el setlist');
@@ -537,12 +517,13 @@ export default function EventsList({
         />
       )}
       
-      <SetlistPreviewModal
-        isOpen={!!previewSetlist}
-        onClose={() => setPreviewSetlist(null)}
-        setlist={previewSetlist as Setlist}
-        songs={previewSetlistSongs}
-      />
+      {previewSetlist && (
+        <SetlistPreviewModal
+          isOpen={!!previewSetlist}
+          onClose={() => setPreviewSetlist(null)}
+          setlist={previewSetlist}
+        />
+      )}
     </div>
   );
 }
