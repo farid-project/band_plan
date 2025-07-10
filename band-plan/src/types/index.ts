@@ -59,6 +59,7 @@ export interface Setlist {
   id: string;
   group_id: string;
   name: string;
+  band_name?: string;
   description?: string;
   estimated_duration_minutes?: number;
   created_by: string;
