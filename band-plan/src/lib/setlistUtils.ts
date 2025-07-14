@@ -569,3 +569,75 @@ export async function reorderSetlistItems(
     return false;
   }
 } 
+
+export async function duplicateSetlist(setlistId: string, newName?: string): Promise<Setlist | null> {
+  try {
+    // 1. Obtener el setlist original con todas sus canciones y medleys
+    const originalSetlist = await getSetlistWithSongs(setlistId);
+    if (!originalSetlist) {
+      toast.error('No se pudo encontrar el setlist original');
+      return null;
+    }
+
+    // 2. Obtener el usuario actual
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error('No se pudo obtener la información del usuario');
+      return null;
+    }
+
+    // 3. Crear un nuevo setlist con los datos del original
+    const newSetlistData = {
+      name: newName || `${originalSetlist.name} (copia)`,
+      description: originalSetlist.description,
+      group_id: originalSetlist.group_id,
+      estimated_duration_minutes: originalSetlist.estimated_duration_minutes,
+      created_by: user.id
+    };
+
+    const newSetlist = await createSetlist(newSetlistData);
+    if (!newSetlist) {
+      toast.error('Error al crear el nuevo setlist');
+      return null;
+    }
+
+    // 4. Duplicar las canciones del setlist
+    if (originalSetlist.songs && originalSetlist.songs.length > 0) {
+      const songPromises = originalSetlist.songs.map(song => 
+        addSongToSetlist(newSetlist.id, song.song_id, song.position)
+      );
+      await Promise.all(songPromises);
+    }
+
+    // 5. Duplicar los medleys del setlist
+    if (originalSetlist.medleys && originalSetlist.medleys.length > 0) {
+      for (const medley of originalSetlist.medleys) {
+        // Crear el nuevo medley
+        const newMedley = await createMedley(
+          newSetlist.id,
+          medley.name,
+          medley.position,
+          []
+        );
+
+        if (newMedley && medley.songs && medley.songs.length > 0) {
+          // Añadir las canciones al nuevo medley
+          for (const medleySong of medley.songs) {
+            await addSongToMedley(
+              newMedley.id,
+              medleySong.song_id,
+              medleySong.position
+            );
+          }
+        }
+      }
+    }
+
+    // 6. Obtener el setlist completo con todas sus relaciones
+    return await getSetlistWithSongs(newSetlist.id);
+  } catch (error) {
+    console.error('Error al duplicar el setlist:', error);
+    toast.error('Error al duplicar el setlist');
+    return null;
+  }
+}

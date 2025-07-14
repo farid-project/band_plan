@@ -10,13 +10,14 @@ import {
   removeSongFromSetlist,
   reorderSetlistSongs,
   reorderSetlistItems,
-  updateMedley
+  updateMedley,
+  duplicateSetlist
 } from '../lib/setlistUtils';
 import { toast } from 'react-hot-toast';
 import Button from './Button';
 import Input from './Input';
 import { supabase } from '../lib/supabase';
-import { FaMusic, FaPlus, FaEdit, FaGripVertical } from 'react-icons/fa';
+import { FaMusic, FaPlus, FaEdit, FaGripVertical, FaCopy } from 'react-icons/fa';
 import {
   DndContext,
   closestCenter,
@@ -135,6 +136,9 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
   const [formData, setFormData] = useState<SetlistFormData>(initialFormData);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [setlistToDelete, setSetlistToDelete] = useState<Setlist | null>(null);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [setlistToDuplicate, setSetlistToDuplicate] = useState<Setlist | null>(null);
+  const [duplicateSetlistName, setDuplicateSetlistName] = useState('');
   const [addSongSearch, setAddSongSearch] = useState('');
 
   const [showCreateMedleyModal, setShowCreateMedleyModal] = useState(false);
@@ -514,6 +518,32 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
     setSelectedSetlist(updatedSetlist);
     setSetlists(prev => prev.map(s => s.id === updatedSetlist.id ? updatedSetlist : s));
   };
+  
+  const handleDuplicateClick = (setlist: Setlist) => {
+    setSetlistToDuplicate(setlist);
+    setDuplicateSetlistName(`${setlist.name} (copia)`);
+    setShowDuplicateModal(true);
+  };
+
+  const confirmDuplicate = async () => {
+    if (!setlistToDuplicate || !duplicateSetlistName.trim()) return;
+    
+    setLoading(true);
+    setShowDuplicateModal(false);
+    
+    const duplicatedSetlist = await duplicateSetlist(setlistToDuplicate.id, duplicateSetlistName.trim());
+    
+    if (duplicatedSetlist) {
+      toast.success(`Setlist duplicado correctamente`);
+      await loadData(); // Recargar todos los setlists
+    } else {
+      toast.error('No se pudo duplicar el setlist');
+    }
+    
+    setSetlistToDuplicate(null);
+    setDuplicateSetlistName('');
+    setLoading(false);
+  };
 
   if (loading) {
     return <div className="text-center py-8">Cargando setlists...</div>;
@@ -619,6 +649,9 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
                            </Button>
                             <Button variant="secondary" onClick={() => handleEdit(selectedSetlist)}>
                                 <FaEdit className="mr-2" /> Editar
+                            </Button>
+                            <Button variant="secondary" onClick={() => handleDuplicateClick(selectedSetlist)}>
+                                <FaCopy className="mr-2" /> Duplicar
                             </Button>
                             <Button variant="danger" onClick={() => handleDelete(selectedSetlist)}>
                                 Eliminar
@@ -730,6 +763,44 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
                 onClick={confirmDelete}
               >
                 Eliminar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDuplicateModal && setlistToDuplicate && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Duplicar Setlist
+            </h3>
+            <p className="text-gray-600 mb-4">
+              Introduce un nombre para el nuevo setlist:
+            </p>
+            <Input
+              value={duplicateSetlistName}
+              onChange={(e) => setDuplicateSetlistName(e.target.value)}
+              className="mb-6"
+              autoFocus
+            />
+            <div className="flex gap-3 justify-end">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowDuplicateModal(false);
+                  setSetlistToDuplicate(null);
+                  setDuplicateSetlistName('');
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="primary"
+                onClick={confirmDuplicate}
+                disabled={!duplicateSetlistName.trim()}
+              >
+                Duplicar
               </Button>
             </div>
           </div>
