@@ -4,7 +4,14 @@ import { Setlist, Medley, SetlistSong } from '../types';
 import { X, Music, ChevronDown, Printer } from 'lucide-react';
 
 // This component is ONLY for printing. It's invisible on screen.
-const PrintableSetlist: React.FC<{ setlist: Setlist | null }> = ({ setlist }) => {
+interface PrintableSetlistProps {
+  setlist: Setlist | null;
+  eventName?: string;
+  eventDate?: string; // ISO string
+  bandName?: string;
+}
+
+const PrintableSetlist: React.FC<PrintableSetlistProps> = ({ setlist, eventName, eventDate, bandName }) => {
   if (!setlist) return null;
 
   const combinedItems = useMemo(() => {
@@ -41,9 +48,11 @@ const PrintableSetlist: React.FC<{ setlist: Setlist | null }> = ({ setlist }) =>
   return (
     <div className="p-6 font-sans bg-white text-black">
       <header className="text-center pb-3 mb-6 border-b-2 border-black">
-        <p className="text-xs">Setlist de la Banda</p>
-        <h1 className="font-serif text-4xl font-bold my-0.5 tracking-wider">{setlist.band_name || setlist.name}</h1>
-        <p className="text-base italic text-gray-700">{setlist.description || 'Lugar del Evento / Fecha'}</p>
+
+        <h1 className="font-serif text-4xl font-bold my-0.5 tracking-wider">{bandName || ''}</h1>
+        <p className="text-base italic text-gray-700">
+          {eventName && eventDate ? `${eventName} - ${new Date(eventDate).toLocaleDateString()}` : (setlist.description || 'Evento / Fecha')}
+        </p>
       </header>
 
       <main>
@@ -104,9 +113,12 @@ interface SetlistPreviewModalProps {
   isOpen: boolean;
   onClose: () => void;
   setlist: Setlist | null;
+  eventName?: string;
+  eventDate?: string; // ISO string
+  bandName?: string;
 }
 
-const SetlistPreviewModal: React.FC<SetlistPreviewModalProps> = ({ isOpen, onClose, setlist }) => {
+const SetlistPreviewModal: React.FC<SetlistPreviewModalProps> = ({ isOpen, onClose, setlist, eventName, eventDate, bandName }) => {
   const [showArtists, setShowArtists] = useState(true);
 
   const handlePrint = () => {
@@ -117,7 +129,7 @@ const SetlistPreviewModal: React.FC<SetlistPreviewModalProps> = ({ isOpen, onClo
 
     // 2. Render the printable component into the container
     const root = createRoot(printContainer);
-    root.render(<PrintableSetlist setlist={setlist} />);
+    root.render(<PrintableSetlist setlist={setlist} eventName={eventName} eventDate={eventDate} bandName={bandName} />);
 
     // 3. Trigger the print dialog
     // We need a slight delay to ensure the content is rendered before printing.

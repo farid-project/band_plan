@@ -51,8 +51,9 @@ const PrintableSetlist: React.FC<PrintableSetlistProps> = ({ setlist, event, ban
         border-bottom: 5px solid var(--border-color);
       }
 
+
       header h1 {
-        font-family: 'Special Elite', cursive;
+        font-family: 'Florida Project Phase One', 'Special Elite', cursive;
         font-size: 2.1em;
         margin: 0;
         letter-spacing: 2px;
@@ -175,9 +176,15 @@ const PrintableSetlist: React.FC<PrintableSetlistProps> = ({ setlist, event, ban
 
       /* Print Styles */
       @media print {
-        body * {
-          visibility: hidden !important;
-        }
+  /* Oculta encabezado y pie de página del navegador */
+}
+
+@page {
+  margin: 0;
+  size: auto;
+}
+
+@media print {
         .printable-setlist, .printable-setlist * {
           visibility: visible !important;
           position: static !important;
@@ -282,20 +289,19 @@ const PrintableSetlist: React.FC<PrintableSetlistProps> = ({ setlist, event, ban
   // Format event date
   const formatEventDate = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleDateString('es-ES', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
+    // Format as DD/MM/YYYY
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}/${month}/${year}`;
   };
 
   return (
     <div className="container printable-setlist">
       <header>
-        <h1 contentEditable={true}>{bandName || 'NOMBRE DE LA BANDA'}</h1>
+      <h1 contentEditable={true}>{bandName || 'NOMBRE DE LA BANDA'}</h1>
         <p contentEditable={true}>
-          {event ? `${event.name || 'Evento'} / ${formatEventDate(event.date)}` : 'Lugar del Evento / Fecha'}
+          {event ? `${event.name || 'Evento'} - ${formatEventDate(event.date)}` : 'Lugar del Evento - Fecha'}
         </p>
       </header>
 

@@ -43,6 +43,8 @@ export default function EventsList({
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
   // Estado para el modal de setlist preview
   const [previewSetlist, setPreviewSetlist] = useState<Setlist | null>(null);
+  const [previewEventInfo, setPreviewEventInfo] = useState<{ name: string; date: string } | null>(null);
+  const [previewBandName, setPreviewBandName] = useState<string>('');
 
   useEffect(() => {
     fetchEvents();
@@ -166,7 +168,28 @@ export default function EventsList({
     setIsEditModalOpen(true);
   };
 
-  const handlePreviewSetlist = async (setlist: Setlist | undefined) => {
+  const handlePreviewSetlist = async (event: EventWithMembers) => {
+    // Fetch band name
+    try {
+      const { data: group, error } = await supabase
+        .from('groups')
+        .select('name')
+        .eq('id', event.group_id)
+        .single();
+      if (error) throw error;
+      setPreviewBandName(group?.name || '');
+    } catch (err) {
+      setPreviewBandName('');
+    }
+
+  const setlist = event.setlist;
+  if (!setlist) {
+    console.warn('Se intentó abrir un preview con un setlist undefined');
+    return;
+  }
+
+  // store event info for modal
+  setPreviewEventInfo({ name: event.name, date: event.date });
     if (!setlist) {
       console.warn('Se intentó abrir un preview con un setlist undefined');
       return;
@@ -428,7 +451,7 @@ export default function EventsList({
                                           <Music className="w-3 h-3 mr-1 text-blue-500" />
                                           <span 
                                             className="text-indigo-600 font-medium cursor-pointer hover:underline"
-                                            onClick={() => event.setlist && handlePreviewSetlist(event.setlist)}
+                                            onClick={() => event.setlist && handlePreviewSetlist(event)}
                                           >
                                             {event.setlist.name}
                                           </span>
@@ -520,8 +543,11 @@ export default function EventsList({
       {previewSetlist && (
         <SetlistPreviewModal
           isOpen={!!previewSetlist}
-          onClose={() => setPreviewSetlist(null)}
+          onClose={() => { setPreviewSetlist(null); setPreviewEventInfo(null); setPreviewBandName(''); }}
           setlist={previewSetlist}
+          eventName={previewEventInfo?.name}
+          eventDate={previewEventInfo?.date}
+          bandName={previewBandName}
         />
       )}
     </div>

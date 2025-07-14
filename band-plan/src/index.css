@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+
+@media print {
+  h1 {
+    font-family: 'Florida Project Phase One', 'Special Elite', cursive !important;
+  }
+}
+
+@font-face {
+  font-family: 'Florida Project Phase One';
+  src: url('/assets/fonts/Florida Project Phase One.otf') format('opentype');
+  font-weight: normal;
+  font-style: normal;
+}
+
 /* DayPicker custom styles */
 .rdp {
   --rdp-cell-size: 50px !important;
