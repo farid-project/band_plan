@@ -8,7 +8,7 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      external: ['@dnd-kit/core', '@dnd-kit/sortable'],
+      external: (id) => id.startsWith('@dnd-kit/'),
     },
   },
 });
