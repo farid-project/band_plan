@@ -5,10 +5,5 @@ export default defineConfig({
   plugins: [react()],
   optimizeDeps: {
     exclude: ['lucide-react'],
-  },
-  build: {
-    rollupOptions: {
-      external: (id) => id.startsWith('@dnd-kit/'),
-    },
-  },
+  }
 });
