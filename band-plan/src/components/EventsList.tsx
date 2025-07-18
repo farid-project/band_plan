@@ -60,8 +60,10 @@ export default function EventsList({
           setlist:setlists (
             id,
             name,
-            songs:setlist_songs(id),
-            medleys(id)
+            songs:setlist_songs(
+              id,
+              song:songs(type)
+            )
           )
         `)
         .eq('group_id', groupId)
@@ -200,8 +202,7 @@ export default function EventsList({
         .from('setlists')
         .select(`
           *,
-          songs: setlist_songs(*, song: songs(*)),
-          medleys: medleys(*, songs: medley_songs(*, song: songs(*)))
+          songs: setlist_songs(*, song: songs(*))
         `)
         .eq('id', setlist.id)
         .single();
@@ -456,8 +457,11 @@ export default function EventsList({
                                             {event.setlist.name}
                                           </span>
                                           <span className="text-gray-400 ml-1">
-                                            ({event.setlist.songs?.length || 0} canciones
-                                            {event.setlist.medleys?.length > 0 && `, ${event.setlist.medleys.length} medleys`})
+                                            {(() => {
+                                              const regularSongs = event.setlist.songs?.filter(s => s.song?.type === 'song' || !s.song?.type) || [];
+                                              const medleys = event.setlist.songs?.filter(s => s.song?.type === 'medley') || [];
+                                              return `(${regularSongs.length} canciones${medleys.length > 0 ? `, ${medleys.length} medleys` : ''})`;
+                                            })()}
                                           </span>
                                         </div>
                                       ) : (

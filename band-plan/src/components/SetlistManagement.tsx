@@ -165,28 +165,53 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
           // Check if this song is actually a medley
           const isMedialey = song.song?.type === 'medley';
           
-          items.push({
-            id: song.id,
-            type: isMedialey ? 'medley' : 'song',
-            position: song.position,
-            data: isMedialey ? song.song! : song
-          });
+          // Debug logging for medleys
+          if (isMedialey) {
+            console.log('Processing medley item:', {
+              songId: song.id,
+              songSongId: song.song?.id,
+              songTitle: song.song?.title,
+              songType: song.song?.type,
+              position: song.position
+            });
+          }
+          
+          // Only add items with valid IDs
+          if (song.id) {
+            items.push({
+              id: song.id, // Always use setlist_songs ID for consistency
+              type: isMedialey ? 'medley' : 'song',
+              position: song.position,
+              data: isMedialey ? song.song! : song
+            });
+          } else {
+            console.error('Song with undefined ID found:', song);
+          }
         });
       }
 
-      // Keep legacy medleys support for backwards compatibility
-      if (selectedSetlist.medleys) {
-        selectedSetlist.medleys.forEach(medley => {
-          items.push({
-            id: medley.id,
-            type: 'medley',
-            position: medley.position,
-            data: medley
-          });
-        });
+      // Legacy medleys should not exist in the new system
+      // All medleys should be in songs table with type='medley'
+      if (selectedSetlist.medleys && selectedSetlist.medleys.length > 0) {
+        console.warn('Legacy medleys found in setlist - these will be ignored in the new system:', selectedSetlist.medleys);
+        console.warn('All medleys should be in the songs table with type="medley"');
       }
 
       items.sort((a, b) => a.position - b.position);
+      
+      // Debug: Check for duplicate IDs
+      const ids = items.map(item => item.id);
+      const duplicateIds = ids.filter((id, index) => ids.indexOf(id) !== index);
+      if (duplicateIds.length > 0) {
+        console.error('Duplicate IDs found in setlistItems:', duplicateIds);
+        console.error('All items:', items);
+        console.error('selectedSetlist.songs:', selectedSetlist.songs);
+        console.error('selectedSetlist.medleys:', selectedSetlist.medleys);
+      }
+      
+      // Additional debug: Log all items
+      console.log('All setlistItems:', items.map(item => ({ id: item.id, type: item.type, position: item.position })));
+      
       setSetlistItems(items);
     } else {
       setSetlistItems([]);
@@ -311,7 +336,11 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
   const handleAddSongToSetlist = async (setlistId: string, songId: string) => {
     if (!selectedSetlist) return;
 
-    const newPosition = setlistItems.length + 1;
+    // Calculate position based on maximum existing position + 1
+    const maxPosition = selectedSetlist.songs && selectedSetlist.songs.length > 0 
+      ? Math.max(...selectedSetlist.songs.map(s => s.position)) 
+      : 0;
+    const newPosition = maxPosition + 1;
 
     const result = await addSongToSetlist(setlistId, songId, newPosition);
     
@@ -379,33 +408,35 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
       position: index + 1,
     }));
 
+    // Update all items (both songs and medleys) as they're all in the songs array
     const newSongs = itemsToUpdate
-      .filter(item => item.type === 'song')
       .map(updatedItem => {
         const originalSong = selectedSetlist.songs?.find(s => s.id === updatedItem.id);
         return { ...originalSong!, position: updatedItem.position };
       });
 
-    const newMedleys = itemsToUpdate
-      .filter(item => item.type === 'medley')
-      .map(updatedItem => {
-        const originalMedley = selectedSetlist.medleys?.find(m => m.id === updatedItem.id);
-        return { ...originalMedley!, position: updatedItem.position };
-      });
-
     const updatedSetlist = {
       ...selectedSetlist,
       songs: newSongs,
-      medleys: newMedleys,
     };
 
     setSelectedSetlist(updatedSetlist);
     setSetlists(prev => prev.map(s => s.id === updatedSetlist.id ? updatedSetlist : s));
 
-    reorderSetlistItems(selectedSetlist.id, itemsToUpdate).then(success => {
+    console.log('Reordering items:', itemsToUpdate);
+    
+    // Convert items to the format expected by reorderSetlistSongs
+    const songPositions = itemsToUpdate.map(item => ({
+      songId: item.id,
+      position: item.position
+    }));
+    
+    reorderSetlistSongs(selectedSetlist.id, songPositions).then(success => {
       if (!success) {
         toast.error("No se pudo guardar el orden. Se revertirán los cambios.");
         loadData();
+      } else {
+        console.log('Reorder successful');
       }
     });
   };
@@ -508,7 +539,11 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
     if (!selectedSetlist) return;
     
     // Add the new medley to the current setlist
-    const newPosition = (selectedSetlist.songs?.length || 0) + 1;
+    // Calculate position based on maximum existing position + 1
+    const maxPosition = selectedSetlist.songs && selectedSetlist.songs.length > 0 
+      ? Math.max(...selectedSetlist.songs.map(s => s.position)) 
+      : 0;
+    const newPosition = maxPosition + 1;
     const result = await addSongToSetlist(selectedSetlist.id, newMedley.id, newPosition);
     
     if (result) {
@@ -683,9 +718,9 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
                        items={setlistItems.map(item => item.id)}
                        strategy={verticalListSortingStrategy}
                      >
-                       {setlistItems.map(item => (
+                       {setlistItems.map((item, index) => (
                          <SortableSetlistItem
-                           key={item.id}
+                           key={`${item.type}-${item.id}-${index}`}
                            item={item}
                            canManageSetlists={canManageSetlists}
                            songs={songs}
@@ -724,8 +759,13 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
                       .map(song => (
                        <div key={song.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-md">
                          <div>
-                           <p className="font-medium text-sm">{song.title}</p>
-                           <p className="text-xs text-gray-500">{song.artist}</p>
+                           <p className="font-medium text-sm">
+                             {song.type === 'medley' && <span className="text-blue-600 mr-1">🎵</span>}
+                             {song.title}
+                           </p>
+                           <p className="text-xs text-gray-500">
+                             {song.type === 'medley' ? 'Medley' : song.artist}
+                           </p>
                          </div>
                          <Button onClick={() => handleAddSongToSetlist(selectedSetlist.id, song.id)}>
                             <FaPlus />

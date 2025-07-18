@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Setlist, Medley, SetlistSong } from '../types';
-import { X, Music, ChevronDown, Printer } from 'lucide-react';
+import { Setlist, SetlistSong } from '../types';
+import { X, Music, Printer } from 'lucide-react';
 
 // This component is ONLY for printing. It's invisible on screen.
 interface PrintableSetlistProps {
@@ -14,30 +14,25 @@ interface PrintableSetlistProps {
 const PrintableSetlist: React.FC<PrintableSetlistProps> = ({ setlist, eventName, eventDate, bandName }) => {
   if (!setlist) return null;
 
-  const combinedItems = useMemo(() => {
-    const songs: (SetlistSong & { type: 'song' })[] = (setlist.songs || []).map(s => ({ ...s, type: 'song' as const }));
-    const medleys: (Medley & { type: 'medley' })[] = (setlist.medleys || []).map(m => ({ ...m, type: 'medley' as const }));
-    const allItems: ((SetlistSong & { type: 'song' }) | (Medley & { type: 'medley' }))[] = [...songs, ...medleys];
-    return allItems.sort((a, b) => a.position - b.position);
-  }, [setlist]);
+  const combinedItems = !setlist?.songs ? [] : setlist.songs.map(s => ({
+    ...s,
+    type: s.song?.type === 'medley' ? 'medley' as const : 'song' as const
+  })).sort((a, b) => a.position - b.position);
 
   const renderItem = (item: (typeof combinedItems)[0], index: number) => {
     const isMedley = item.type === 'medley';
-    const title = isMedley ? item.name : item.song?.title;
+    const title = item.song?.title;
     const number = String(index + 1).padStart(2, '0');
 
     return (
-      <li key={isMedley ? `medley-${item.id}` : `song-${item.song_id}`} className="py-1.5 border-b border-gray-300 break-inside-avoid flex items-start">
+      <li key={`item-${item.id}`} className="py-1.5 border-b border-gray-300 break-inside-avoid flex items-start">
         <span className="font-mono font-bold text-base w-7 mr-3 flex-shrink-0 pt-0.5">{number}</span>
         <div className="flex-grow">
           <span className="text-base font-semibold">{title}</span>
-          {isMedley && (
+          {isMedley && item.song?.medley_song_ids && (
             <div className="pt-1 space-y-0.5">
-              {item.songs?.map((songItem, songIndex) => (
-                <p key={`medley-song-${songItem.song_id}-${songIndex}`} className="text-xs text-gray-600">
-                  - {songItem.song?.title}
-                </p>
-              ))}
+              {/* Note: For printing, we would need to fetch the actual song details */}
+              <p className="text-xs text-gray-600">Medley ({item.song.medley_song_ids.length} canciones)</p>
             </div>
           )}
         </div>
@@ -65,49 +60,6 @@ const PrintableSetlist: React.FC<PrintableSetlistProps> = ({ setlist, eventName,
 };
 
 
-interface MedleyItemProps {
-  medley: Medley;
-  itemNumber: number;
-  showArtists: boolean;
-}
-
-const MedleyItem: React.FC<MedleyItemProps> = ({ medley, itemNumber, showArtists }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const songCount = medley.songs?.length || 0;
-
-  return (
-    <div className="bg-slate-50 rounded-lg p-2 my-1 transition-all duration-300">
-      <div 
-        className="flex items-center space-x-3 text-sm group cursor-pointer"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        <span className="text-gray-400 font-mono w-5 text-right pt-1 self-start">{itemNumber}.</span>
-        <div className="flex-grow">
-          <p className="text-indigo-600 font-bold group-hover:text-indigo-800 transition-colors">{medley.name}</p>
-          {!isExpanded && (
-            <p className="text-xs text-gray-400">{songCount} {songCount === 1 ? 'canción' : 'canciones'}</p>
-          )}
-        </div>
-        <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} />
-      </div>
-      <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isExpanded ? 'max-h-96' : 'max-h-0'}`}>
-        <div className="pl-8 pt-2 space-y-1">
-          {medley.songs?.map((item: any, songIndex: number) => (
-            <div key={`medley-song-${item.song?.id || songIndex}`} className="flex items-baseline space-x-3 text-sm group py-1 pl-5">
-              <span className="text-gray-400 font-mono w-5 text-right">{songIndex + 1}.</span>
-              <div>
-                <p className="text-gray-800 font-medium group-hover:text-indigo-600 transition-colors">{item.song?.title || 'N/A'}</p>
-                <p className={`text-gray-500 text-xs transition-all duration-300 ease-in-out ${showArtists && item.song?.artist ? 'opacity-100 h-4' : 'opacity-0 h-0'}`}>
-                  {item.song?.artist}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-};
 
 interface SetlistPreviewModalProps {
   isOpen: boolean;
@@ -190,15 +142,13 @@ const SetlistPreviewModal: React.FC<SetlistPreviewModalProps> = ({ isOpen, onClo
 
                 {(() => {
                   const combinedItems = useMemo(() => {
-                    if (!setlist) return [];
-
-                    const songs: (SetlistSong & { type: 'song' })[] = (setlist.songs || []).map(s => ({ ...s, type: 'song' as const }));
-                    const medleys: (Medley & { type: 'medley' })[] = (setlist.medleys || []).map(m => ({ ...m, type: 'medley' as const }));
+                    if (!setlist?.songs) return [];
                     
-                    const allItems: ((SetlistSong & { type: 'song' }) | (Medley & { type: 'medley' }))[] = [...songs, ...medleys];
-
-                    return allItems.sort((a, b) => a.position - b.position);
-                  }, [setlist]);
+                    return setlist.songs.map(s => ({
+                      ...s,
+                      type: s.song?.type === 'medley' ? 'medley' as const : 'song' as const
+                    })).sort((a, b) => a.position - b.position);
+                  }, [setlist?.songs]);
 
                   const totalItems = combinedItems.length;
                   const useTwoColumns = totalItems > 10;
@@ -223,7 +173,17 @@ const SetlistPreviewModal: React.FC<SetlistPreviewModalProps> = ({ isOpen, onClo
                     >
                       {combinedItems.map((item, index) => {
                         if (item.type === 'medley') {
-                          return <MedleyItem key={`medley-${item.id}`} medley={item} itemNumber={index + 1} showArtists={showArtists} />;
+                          return (
+                            <div key={`medley-${item.id}`} className="bg-slate-50 rounded-lg p-2 my-1 transition-all duration-300">
+                              <div className="flex items-center space-x-3 text-sm">
+                                <span className="text-gray-400 font-mono w-5 text-right pt-1 self-start">{index + 1}.</span>
+                                <div className="flex-grow">
+                                  <p className="text-indigo-600 font-bold">{item.song?.title}</p>
+                                  <p className="text-xs text-gray-400">Medley ({item.song?.medley_song_ids?.length || 0} canciones)</p>
+                                </div>
+                              </div>
+                            </div>
+                          );
                         } else {
                           return (
                             <div key={`song-${item.song?.id || index}`} className="flex items-baseline space-x-3 text-sm group py-1 min-h-[3.25rem]">

@@ -141,8 +141,15 @@ export default function MedleyItem({
 
   // Sort songs based on their order in medley_song_ids array
   const sortedSongs = medley.medley_song_ids ? 
-    medley.medley_song_ids.map(id => medleySongs.find(song => song.id === id)).filter(Boolean) as Song[] : 
+    medley.medley_song_ids
+      .map(id => medleySongs.find(song => song.id === id))
+      .filter(Boolean) as Song[] : 
     [];
+  
+  // Ensure no duplicates by creating a Map and converting back to array
+  const uniqueSortedSongs = Array.from(
+    new Map(sortedSongs.map(song => [song.id, song])).values()
+  );
 
   return (
     <div className="border-l-4 border-blue-400 bg-blue-50 rounded p-3 mb-2">
@@ -152,7 +159,7 @@ export default function MedleyItem({
           <span className="font-semibold text-blue-800">{medley.title}</span>
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-600">
-          <span>{sortedSongs.length} canciones</span>
+          <span>{uniqueSortedSongs.length} canciones</span>
           {isExpanded ? <FaChevronUp /> : <FaChevronDown />}
         </div>
       </div>
@@ -201,11 +208,11 @@ export default function MedleyItem({
             <>
               <div>
                 <h4 className="text-sm font-medium text-gray-700 mb-1">Canciones:</h4>
-                {sortedSongs.length === 0 ? (
+                {uniqueSortedSongs.length === 0 ? (
                   <p className="text-sm text-gray-500 italic">No hay canciones en este medley</p>
                 ) : (
                   <ul className="space-y-1">
-                    {sortedSongs.map((song) => (
+                    {uniqueSortedSongs.map((song) => (
                       <li key={song.id} className="flex items-center justify-between py-1 pl-2 hover:bg-blue-100 rounded">
                         <div className="flex-1">
                           <span className="font-medium text-sm">{song.title}</span>
@@ -246,7 +253,7 @@ export default function MedleyItem({
                       <div className="max-h-32 overflow-y-auto space-y-1">
                         {availableSongs
                           .filter(s => s.type === 'song') // Only show regular songs
-                          .filter(s => !sortedSongs.some(ms => ms.id === s.id))
+                          .filter(s => !uniqueSortedSongs.some(ms => ms.id === s.id))
                           .filter(song =>
                             song.title.toLowerCase().includes(addSongSearch.toLowerCase()) ||
                             song.artist?.toLowerCase().includes(addSongSearch.toLowerCase())
@@ -264,7 +271,7 @@ export default function MedleyItem({
                             )}
                           </button>
                         ))}
-                         {availableSongs.filter(s => s.type === 'song' && !sortedSongs.some(ms => ms.id === s.id)).length === 0 && (
+                         {availableSongs.filter(s => s.type === 'song' && !uniqueSortedSongs.some(ms => ms.id === s.id)).length === 0 && (
                             <p className="text-xs text-gray-500 p-1">No hay más canciones para añadir.</p>
                          )}
                       </div>
