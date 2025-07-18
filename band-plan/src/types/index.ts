@@ -53,6 +53,8 @@ export interface Song {
   created_by: string;
   created_at: string;
   updated_at: string;
+  type: 'song' | 'medley';
+  medley_song_ids?: string[];
 }
 
 export interface Setlist {
@@ -66,7 +68,6 @@ export interface Setlist {
   created_at: string;
   updated_at: string;
   songs?: SetlistSong[];
-  medleys?: Medley[];
 }
 
 export interface SetlistSong {
@@ -80,6 +81,7 @@ export interface SetlistSong {
   song?: Song;
 }
 
+// Legacy interfaces for backwards compatibility with existing components
 export interface Medley {
   id: string;
   setlist_id: string;

@@ -110,9 +110,9 @@ function SortableSetlistItem({
           </div>
         ) : (
           <MedleyItem
-            medley={item.data as Medley}
+            medley={item.data as Song}
             availableSongs={songs.filter(song => 
-                !(item.data as Medley).songs?.some(ms => ms.song_id === song.id)
+                song.type === 'song' // Only show regular songs, not other medleys
             )}
             canEdit={canManageSetlists}
             onSongAdded={onSongAddedToMedley}
@@ -162,15 +162,19 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
       
       if (selectedSetlist.songs) {
         selectedSetlist.songs.forEach(song => {
+          // Check if this song is actually a medley
+          const isMedialey = song.song?.type === 'medley';
+          
           items.push({
             id: song.id,
-            type: 'song',
+            type: isMedialey ? 'medley' : 'song',
             position: song.position,
-            data: song
+            data: isMedialey ? song.song! : song
           });
         });
       }
 
+      // Keep legacy medleys support for backwards compatibility
       if (selectedSetlist.medleys) {
         selectedSetlist.medleys.forEach(medley => {
           items.push({
@@ -500,23 +504,30 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
     setSetlists(prev => prev.map(s => s.id === updatedSetlist.id ? updatedSetlist : s));
   };
 
-  const handleMedleyCreated = (newMedley: Medley) => {
+  const handleMedleyCreated = async (newMedley: Song) => {
     if (!selectedSetlist) return;
-
-    const newMedleyItem: SetlistItem = {
-      id: newMedley.id,
-      type: 'medley',
-      position: newMedley.position,
-      data: newMedley
-    };
     
-    const updatedSetlist = {
-      ...selectedSetlist,
-      medleys: [...(selectedSetlist.medleys || []), newMedley],
-    };
+    // Add the new medley to the current setlist
+    const newPosition = (selectedSetlist.songs?.length || 0) + 1;
+    const result = await addSongToSetlist(selectedSetlist.id, newMedley.id, newPosition);
     
-    setSelectedSetlist(updatedSetlist);
-    setSetlists(prev => prev.map(s => s.id === updatedSetlist.id ? updatedSetlist : s));
+    if (result) {
+      toast.success('Medley creado y añadido al setlist');
+      
+      // Reload data to get updated setlist
+      await loadData();
+      
+      // Find and select the updated setlist
+      const updatedSetlists = await getSetlistsByGroup(groupId);
+      if (updatedSetlists) {
+        const updatedSetlist = updatedSetlists.find(s => s.id === selectedSetlist.id);
+        if (updatedSetlist) {
+          setSelectedSetlist(updatedSetlist);
+        }
+      }
+    } else {
+      toast.error('Medley creado pero no se pudo añadir al setlist');
+    }
   };
   
   const handleDuplicateClick = (setlist: Setlist) => {
@@ -811,7 +822,7 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
         <CreateMedleyModal
           isOpen={showCreateMedleyModal}
           onClose={() => setShowCreateMedleyModal(false)}
-          setlistId={selectedSetlist.id}
+          groupId={groupId}
           availableSongs={getAvailableSongs(selectedSetlist)}
           onMedleyCreated={(newMedley) => {
             handleMedleyCreated(newMedley);

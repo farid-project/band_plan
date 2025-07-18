@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Song, Setlist, SetlistSong, Medley, MedleySong } from '../types';
+import { Song, Setlist, SetlistSong } from '../types';
 import { safeSupabaseRequest } from './supabaseUtils';
 import { toast } from 'react-hot-toast';
 
@@ -18,17 +18,84 @@ export async function getSongsByGroup(groupId: string): Promise<Song[] | null> {
   );
 }
 
-export async function createSong(song: Omit<Song, 'id' | 'created_at' | 'updated_at'>): Promise<Song | null> {
+export async function getRegularSongsByGroup(groupId: string): Promise<Song[] | null> {
   return safeSupabaseRequest(
     async () => {
       const { data, error } = await supabase
         .from('songs')
-        .insert(song)
+        .select('*')
+        .eq('group_id', groupId)
+        .eq('type', 'song')
+        .order('title');
+      return { data: data as Song[] | null, error };
+    },
+    'Error al cargar las canciones'
+  );
+}
+
+export async function getMedleysByGroup(groupId: string): Promise<Song[] | null> {
+  return safeSupabaseRequest(
+    async () => {
+      const { data, error } = await supabase
+        .from('songs')
+        .select('*')
+        .eq('group_id', groupId)
+        .eq('type', 'medley')
+        .order('title');
+      return { data: data as Song[] | null, error };
+    },
+    'Error al cargar los medleys'
+  );
+}
+
+export async function createSong(song: Omit<Song, 'id' | 'created_at' | 'updated_at'>): Promise<Song | null> {
+  const songData = {
+    ...song,
+    type: song.type || 'song'
+  };
+  
+  return safeSupabaseRequest(
+    async () => {
+      const { data, error } = await supabase
+        .from('songs')
+        .insert(songData)
         .select()
         .single();
       return { data: data as Song | null, error };
     },
     'Error al crear la canción'
+  );
+}
+
+export async function createMedley(
+  groupId: string,
+  name: string,
+  songIds: string[]
+): Promise<Song | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    toast.error('No se pudo obtener la información del usuario');
+    return null;
+  }
+  
+  const medleyData = {
+    group_id: groupId,
+    title: name,
+    type: 'medley' as const,
+    medley_song_ids: songIds,
+    created_by: user.id
+  };
+  
+  return safeSupabaseRequest(
+    async () => {
+      const { data, error } = await supabase
+        .from('songs')
+        .insert(medleyData)
+        .select()
+        .single();
+      return { data: data as Song | null, error };
+    },
+    'Error al crear el medley'
   );
 }
 
@@ -79,13 +146,6 @@ export async function getSetlistsByGroup(groupId: string): Promise<Setlist[] | n
           songs:setlist_songs(
             *,
             song:songs(*)
-          ),
-          medleys(
-            *,
-            songs:medley_songs(
-              *,
-              song:songs(*)
-            )
           )
         `)
         .eq('group_id', groupId)
@@ -106,13 +166,6 @@ export async function getSetlistWithSongs(setlistId: string): Promise<Setlist | 
           songs:setlist_songs(
             *,
             song:songs(*)
-          ),
-          medleys(
-            *,
-            songs:medley_songs(
-              *,
-              song:songs(*)
-            )
           )
         `)
         .eq('id', setlistId)
@@ -324,13 +377,6 @@ export async function getEventWithSetlist(eventId: number): Promise<any | null> 
             songs:setlist_songs(
               *,
               song:songs(*)
-            ),
-            medleys(
-              *,
-              songs:medley_songs(
-                *,
-                song:songs(*)
-              )
             )
           )
         `)
@@ -342,135 +388,53 @@ export async function getEventWithSetlist(eventId: number): Promise<any | null> 
   );
 }
 
-// Medley functions
-export async function createMedley(
-  setlistId: string,
-  name: string,
-  position: number,
-  songIds: string[]
-): Promise<Medley | null> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    toast.error('No se pudo obtener la información del usuario');
-    return null;
-  }
-  
-  const createdMedley = await safeSupabaseRequest<Medley>(
-    async () => {
-      const { data: medleyData, error: medleyError } = await supabase
-        .from('medleys')
-        .insert({ setlist_id: setlistId, name, position, created_by: user.id })
-        .select()
-        .single();
-
-      if (medleyError) throw medleyError;
-
-      if (songIds.length > 0) {
-        const medleySongsData = songIds.map((song_id, index) => ({
-          medley_id: medleyData.id,
-          song_id,
-          position: index + 1,
-          created_by: user.id
-        }));
-
-        const { error: songsError } = await supabase
-          .from('medley_songs')
-          .insert(medleySongsData);
-
-        if (songsError) throw songsError;
-      }
-
-      return { data: medleyData, error: null };
-    },
-    'Error al crear el medley'
-  );
-
-  if (createdMedley) {
-    return getMedleyById(createdMedley.id);
-  }
-
-  return null;
-}
-
-export async function getMedleyById(medleyId: string): Promise<Medley | null> {
-  return safeSupabaseRequest(
-    async () => {
-      const { data, error } = await supabase
-        .from('medleys')
-        .select(`
-          *,
-          songs:medley_songs(
-            *,
-            song:songs(*)
-          )
-        `)
-        .eq('id', medleyId)
-        .single();
-      return { data: data as Medley | null, error };
-    },
-    'Error al cargar el medley'
-  );
-}
-
 export async function updateMedley(
   medleyId: string,
-  updates: Partial<Medley>
-): Promise<Medley | null> {
+  updates: Partial<Song>
+): Promise<Song | null> {
   return safeSupabaseRequest(
     async () => {
       const { data, error } = await supabase
-        .from('medleys')
+        .from('songs')
         .update(updates)
         .eq('id', medleyId)
+        .eq('type', 'medley')
         .select()
         .single();
-      return { data: data as Medley | null, error };
+      return { data: data as Song | null, error };
     },
     'Error al actualizar el medley'
   );
 }
 
-export async function deleteMedley(medleyId: string): Promise<boolean> {
-  try {
-    const { error } = await supabase
-      .from('medleys')
-      .delete()
-      .eq('id', medleyId);
-    
-    if (error) {
-      console.error('Error al eliminar el medley:', error);
-      toast.error('Error al eliminar el medley');
-      return false;
-    }
-    
-    return true;
-  } catch (error) {
-    console.error('Error al eliminar el medley:', error);
-    toast.error('Error al eliminar el medley');
-    return false;
-  }
-}
-
 export async function addSongToMedley(
   medleyId: string,
-  songId: string,
-  position: number
-): Promise<MedleySong | null> {
+  songId: string
+): Promise<Song | null> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      toast.error('No se pudo obtener la información del usuario');
+    // Obtener el medley actual
+    const { data: medley, error: medleyError } = await supabase
+      .from('songs')
+      .select('medley_song_ids')
+      .eq('id', medleyId)
+      .eq('type', 'medley')
+      .single();
+
+    if (medleyError) {
+      console.error('Error al obtener el medley:', medleyError);
+      toast.error('Error al obtener el medley');
       return null;
     }
 
+    // Añadir la nueva canción al array
+    const currentSongIds = medley.medley_song_ids || [];
+    const updatedSongIds = [...currentSongIds, songId];
+
+    // Actualizar el medley
     const { data, error } = await supabase
-      .from('medley_songs')
-      .insert({
-        medley_id: medleyId,
-        song_id: songId,
-        position,
-        created_by: user.id
-      })
+      .from('songs')
+      .update({ medley_song_ids: updatedSongIds })
+      .eq('id', medleyId)
       .select()
       .single();
 
@@ -490,18 +454,36 @@ export async function addSongToMedley(
 
 export async function removeSongFromMedley(medleyId: string, songId: string): Promise<boolean> {
   try {
+    // Obtener el medley actual
+    const { data: medley, error: medleyError } = await supabase
+      .from('songs')
+      .select('medley_song_ids')
+      .eq('id', medleyId)
+      .eq('type', 'medley')
+      .single();
+
+    if (medleyError) {
+      console.error('Error al obtener el medley:', medleyError);
+      toast.error('Error al obtener el medley');
+      return false;
+    }
+
+    // Remover la canción del array
+    const currentSongIds = medley.medley_song_ids || [];
+    const updatedSongIds = currentSongIds.filter(id => id !== songId);
+
+    // Actualizar el medley
     const { error } = await supabase
-      .from('medley_songs')
-      .delete()
-      .eq('medley_id', medleyId)
-      .eq('song_id', songId);
-    
+      .from('songs')
+      .update({ medley_song_ids: updatedSongIds })
+      .eq('id', medleyId);
+
     if (error) {
       console.error('Error al eliminar la canción del medley:', error);
       toast.error('Error al eliminar la canción del medley');
       return false;
     }
-    
+
     return true;
   } catch (error) {
     console.error('Error al eliminar la canción del medley:', error);
@@ -512,30 +494,47 @@ export async function removeSongFromMedley(medleyId: string, songId: string): Pr
 
 export async function reorderMedleySongs(
   medleyId: string,
-  songPositions: { songId: string; position: number }[]
+  songIds: string[]
 ): Promise<boolean> {
   try {
-    const updates = songPositions.map(({ songId, position }) =>
-      supabase
-        .from('medley_songs')
-        .update({ position })
-        .eq('medley_id', medleyId)
-        .eq('song_id', songId)
-    );
-    
-    const results = await Promise.all(updates);
-    const error = results.find(res => res.error);
+    const { error } = await supabase
+      .from('songs')
+      .update({ medley_song_ids: songIds })
+      .eq('id', medleyId)
+      .eq('type', 'medley');
 
     if (error) {
       console.error('Error al reordenar las canciones del medley:', error);
       toast.error('Error al reordenar las canciones del medley');
       return false;
     }
-    
+
     return true;
   } catch (error) {
     console.error('Error al reordenar las canciones del medley:', error);
     toast.error('Error al reordenar las canciones del medley');
+    return false;
+  }
+}
+
+export async function deleteMedley(medleyId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('songs')
+      .delete()
+      .eq('id', medleyId)
+      .eq('type', 'medley');
+    
+    if (error) {
+      console.error('Error al eliminar el medley:', error);
+      toast.error('Error al eliminar el medley');
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error al eliminar el medley:', error);
+    toast.error('Error al eliminar el medley');
     return false;
   }
 }
@@ -572,7 +571,7 @@ export async function reorderSetlistItems(
 
 export async function duplicateSetlist(setlistId: string, newName?: string): Promise<Setlist | null> {
   try {
-    // 1. Obtener el setlist original con todas sus canciones y medleys
+    // 1. Obtener el setlist original con todas sus canciones
     const originalSetlist = await getSetlistWithSongs(setlistId);
     if (!originalSetlist) {
       toast.error('No se pudo encontrar el setlist original');
@@ -609,31 +608,7 @@ export async function duplicateSetlist(setlistId: string, newName?: string): Pro
       await Promise.all(songPromises);
     }
 
-    // 5. Duplicar los medleys del setlist
-    if (originalSetlist.medleys && originalSetlist.medleys.length > 0) {
-      for (const medley of originalSetlist.medleys) {
-        // Crear el nuevo medley
-        const newMedley = await createMedley(
-          newSetlist.id,
-          medley.name,
-          medley.position,
-          []
-        );
-
-        if (newMedley && medley.songs && medley.songs.length > 0) {
-          // Añadir las canciones al nuevo medley
-          for (const medleySong of medley.songs) {
-            await addSongToMedley(
-              newMedley.id,
-              medleySong.song_id,
-              medleySong.position
-            );
-          }
-        }
-      }
-    }
-
-    // 6. Obtener el setlist completo con todas sus relaciones
+    // 5. Obtener el setlist completo con todas sus relaciones
     return await getSetlistWithSongs(newSetlist.id);
   } catch (error) {
     console.error('Error al duplicar el setlist:', error);

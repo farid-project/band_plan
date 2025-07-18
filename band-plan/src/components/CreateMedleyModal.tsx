@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Song, Medley } from '../types';
+import { Song } from '../types';
 import { createMedley } from '../lib/setlistUtils';
 import { toast } from 'react-hot-toast';
 import Button from './Button';
@@ -8,15 +8,15 @@ import Input from './Input';
 interface CreateMedleyModalProps {
   isOpen: boolean;
   onClose: () => void;
-  setlistId: string;
+  groupId: string;
   availableSongs: Song[];
-  onMedleyCreated: (newMedley: Medley) => void;
+  onMedleyCreated: (newMedley: Song) => void;
 }
 
 export default function CreateMedleyModal({
   isOpen,
   onClose,
-  setlistId,
+  groupId,
   availableSongs,
   onMedleyCreated
 }: CreateMedleyModalProps) {
@@ -53,7 +53,7 @@ export default function CreateMedleyModal({
 
     setLoading(true);
     try {
-      const newMedley = await createMedley(setlistId, finalMedleyName, 0, selectedSongIds);
+      const newMedley = await createMedley(groupId, finalMedleyName, selectedSongIds);
       if (newMedley) {
         toast.success('Medley creado con éxito');
         onMedleyCreated(newMedley);
@@ -101,6 +101,7 @@ export default function CreateMedleyModal({
             />
             <div className="max-h-40 overflow-y-auto">
               {availableSongs
+                .filter(song => song.type === 'song') // Only show regular songs, not medleys
                 .filter(song => 
                   song.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                   song.artist?.toLowerCase().includes(searchTerm.toLowerCase())

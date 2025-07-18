@@ -1,16 +1,16 @@
-import React, { useState } from 'react';
-import { Medley, Song } from '../types';
-import { updateMedley, deleteMedley, removeSongFromMedley, addSongToMedley } from '../lib/setlistUtils';
+import React, { useState, useEffect } from 'react';
+import { Song } from '../types';
+import { updateMedley, deleteMedley, removeSongFromMedley, addSongToMedley, getSongsByGroup } from '../lib/setlistUtils';
 import { toast } from 'react-hot-toast';
 import Button from './Button';
 import Input from './Input';
 import { FaMusic, FaEdit, FaTrash, FaPlus, FaTimes, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 
 interface MedleyItemProps {
-  medley: Medley;
+  medley: Song; // medley is now a Song with type='medley'
   availableSongs: Song[];
   canEdit?: boolean;
-  onSongAdded: (medleyId: string, song: Song, newMedleySong: MedleySong) => void;
+  onSongAdded: (medleyId: string, songId: string) => void;
   onSongRemoved: (medleyId: string, songId: string) => void;
   onMedleyRenamed: (medleyId: string, newName: string) => void;
   onMedleyDeleted: (medleyId: string) => void;
@@ -27,11 +27,28 @@ export default function MedleyItem({
 }: MedleyItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [medleyName, setMedleyName] = useState(medley.name);
+  const [medleyName, setMedleyName] = useState(medley.title);
   const [showAddSong, setShowAddSong] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [addSongSearch, setAddSongSearch] = useState('');
+  const [medleySongs, setMedleySongs] = useState<Song[]>([]);
+
+  // Load songs that are part of this medley
+  useEffect(() => {
+    const loadMedleySongs = async () => {
+      if (medley.medley_song_ids && medley.medley_song_ids.length > 0) {
+        const allSongs = await getSongsByGroup(medley.group_id);
+        if (allSongs) {
+          const filteredSongs = allSongs.filter(song => 
+            medley.medley_song_ids?.includes(song.id) && song.type === 'song'
+          );
+          setMedleySongs(filteredSongs);
+        }
+      }
+    };
+    loadMedleySongs();
+  }, [medley.medley_song_ids, medley.group_id]);
 
   const handleUpdateMedley = async () => {
     if (!medleyName.trim()) {
@@ -41,7 +58,7 @@ export default function MedleyItem({
 
     setLoading(true);
     try {
-      const updated = await updateMedley(medley.id, { name: medleyName });
+      const updated = await updateMedley(medley.id, { title: medleyName });
       if (updated) {
         toast.success('Medley actualizado');
         onMedleyRenamed(medley.id, medleyName);
@@ -79,6 +96,8 @@ export default function MedleyItem({
       if (success) {
         toast.success('Canción eliminada del medley');
         onSongRemoved(medley.id, songId);
+        // Update local state
+        setMedleySongs(prev => prev.filter(song => song.id !== songId));
       }
     } catch (error) {
       console.error('Error al eliminar la canción del medley:', error);
@@ -95,14 +114,22 @@ export default function MedleyItem({
         return;
     }
 
-    const nextPosition = (medley.songs?.length || 0) + 1;
     setLoading(true);
     try {
-      const addedMedleySong = await addSongToMedley(medley.id, songId, nextPosition);
-      if (addedMedleySong) {
+      const updatedMedley = await addSongToMedley(medley.id, songId);
+      if (updatedMedley) {
         toast.success('Canción añadida al medley');
-        onSongAdded(medley.id, songToAdd, addedMedleySong);
+        onSongAdded(medley.id, songId);
         setShowAddSong(false);
+        setAddSongSearch('');
+        // Reload medley songs
+        const allSongs = await getSongsByGroup(medley.group_id);
+        if (allSongs && updatedMedley.medley_song_ids) {
+          const filteredSongs = allSongs.filter(song => 
+            updatedMedley.medley_song_ids?.includes(song.id) && song.type === 'song'
+          );
+          setMedleySongs(filteredSongs);
+        }
       }
     } catch (error) {
       console.error('Error al añadir la canción al medley:', error);
@@ -112,14 +139,17 @@ export default function MedleyItem({
     }
   };
 
-  const sortedSongs = medley.songs?.sort((a, b) => a.position - b.position) || [];
+  // Sort songs based on their order in medley_song_ids array
+  const sortedSongs = medley.medley_song_ids ? 
+    medley.medley_song_ids.map(id => medleySongs.find(song => song.id === id)).filter(Boolean) as Song[] : 
+    [];
 
   return (
     <div className="border-l-4 border-blue-400 bg-blue-50 rounded p-3 mb-2">
       <div className="flex items-center justify-between cursor-pointer" onClick={() => setIsExpanded(!isExpanded)}>
         <div className="flex items-center gap-2">
           <FaMusic className="text-blue-600" />
-          <span className="font-semibold text-blue-800">{medley.name}</span>
+          <span className="font-semibold text-blue-800">{medley.title}</span>
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-600">
           <span>{sortedSongs.length} canciones</span>
@@ -135,7 +165,7 @@ export default function MedleyItem({
                 variant="secondary"
                 onClick={() => {
                   setIsEditing(!isEditing);
-                  if (isEditing) setMedleyName(medley.name);
+                  if (isEditing) setMedleyName(medley.title);
                 }}
               >
                 <FaEdit className="mr-1" />
@@ -175,16 +205,16 @@ export default function MedleyItem({
                   <p className="text-sm text-gray-500 italic">No hay canciones en este medley</p>
                 ) : (
                   <ul className="space-y-1">
-                    {sortedSongs.map((medleySong) => (
-                      <li key={medleySong.id} className="flex items-center justify-between py-1 pl-2 hover:bg-blue-100 rounded">
+                    {sortedSongs.map((song) => (
+                      <li key={song.id} className="flex items-center justify-between py-1 pl-2 hover:bg-blue-100 rounded">
                         <div className="flex-1">
-                          <span className="font-medium text-sm">{medleySong.song?.title}</span>
-                          {medleySong.song?.artist && (
-                            <span className="text-xs text-gray-500 ml-2">{medleySong.song.artist}</span>
+                          <span className="font-medium text-sm">{song.title}</span>
+                          {song.artist && (
+                            <span className="text-xs text-gray-500 ml-2">{song.artist}</span>
                           )}
                         </div>
                         {canEdit && (
-                          <Button variant="danger" onClick={() => handleRemoveSong(medleySong.song_id)} loading={loading}>
+                          <Button variant="danger" onClick={() => handleRemoveSong(song.id)} loading={loading}>
                             <FaTimes />
                           </Button>
                         )}
@@ -215,7 +245,8 @@ export default function MedleyItem({
                       />
                       <div className="max-h-32 overflow-y-auto space-y-1">
                         {availableSongs
-                          .filter(s => !sortedSongs.some(ms => ms.song_id === s.id))
+                          .filter(s => s.type === 'song') // Only show regular songs
+                          .filter(s => !sortedSongs.some(ms => ms.id === s.id))
                           .filter(song =>
                             song.title.toLowerCase().includes(addSongSearch.toLowerCase()) ||
                             song.artist?.toLowerCase().includes(addSongSearch.toLowerCase())
@@ -233,7 +264,7 @@ export default function MedleyItem({
                             )}
                           </button>
                         ))}
-                         {availableSongs.filter(s => !sortedSongs.some(ms => ms.song_id === s.id)).length === 0 && (
+                         {availableSongs.filter(s => s.type === 'song' && !sortedSongs.some(ms => ms.id === s.id)).length === 0 && (
                             <p className="text-xs text-gray-500 p-1">No hay más canciones para añadir.</p>
                          )}
                       </div>
@@ -258,7 +289,7 @@ export default function MedleyItem({
               Confirmar Eliminación
             </h3>
             <p className="text-gray-600 mb-6">
-              ¿Estás seguro de que quieres eliminar el medley "{medley.name}"? Esta acción no se puede deshacer.
+              ¿Estás seguro de que quieres eliminar el medley "{medley.title}"? Esta acción no se puede deshacer.
             </p>
             <div className="flex gap-3 justify-end">
               <Button
