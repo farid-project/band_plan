@@ -5,6 +5,7 @@ import { toast } from 'react-hot-toast';
 import Button from './Button';
 import Input from './Input';
 import { supabase } from '../lib/supabase';
+import { Search, Filter, X } from 'lucide-react';
 
 interface SongManagementProps {
   groupId: string;
@@ -58,8 +59,30 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
   const [inlineValue, setInlineValue] = useState<string>('');
   const [inlineLoading, setInlineLoading] = useState(false);
   const [inlineError, setInlineError] = useState<string | null>(null);
+  
+  // Search and filter state
+  const [searchText, setSearchText] = useState('');
+  const [filterKey, setFilterKey] = useState('');
+  const [filterType, setFilterType] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
 
   const debouncedTitle = useDebounce(formData.title, 400);
+
+  // Filter songs based on search criteria
+  const filteredSongs = songs.filter(song => {
+    // Text search (title and artist)
+    const searchMatch = !searchText || 
+      song.title.toLowerCase().includes(searchText.toLowerCase()) ||
+      song.artist?.toLowerCase().includes(searchText.toLowerCase());
+    
+    // Key filter
+    const keyMatch = !filterKey || song.key === filterKey;
+    
+    // Type filter
+    const typeMatch = !filterType || song.type === filterType;
+    
+    return searchMatch && keyMatch && typeMatch;
+  });
 
   useEffect(() => {
     loadSongs();
@@ -356,13 +379,117 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
         </form>
       )}
 
+      {/* Search and Filter Component */}
+      <div className="bg-white rounded-lg shadow p-4 mb-4">
+        <div className="flex flex-col gap-4">
+          {/* Search Bar */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <input
+                type="text"
+                placeholder="Buscar por título o artista..."
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              {searchText && (
+                <button
+                  onClick={() => setSearchText('')}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className={`flex items-center gap-2 px-3 py-2 border rounded-md transition-colors ${
+                showFilters ? 'bg-blue-50 border-blue-300 text-blue-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <Filter className="w-4 h-4" />
+              Filtros
+            </button>
+          </div>
+
+          {/* Advanced Filters */}
+          {showFilters && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4 border-t border-gray-200">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Clave Musical
+                </label>
+                <select
+                  value={filterKey}
+                  onChange={(e) => setFilterKey(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Todas las claves</option>
+                  {KEYS.map(key => (
+                    <option key={key} value={key}>{key}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Tipo
+                </label>
+                <select
+                  value={filterType}
+                  onChange={(e) => setFilterType(e.target.value)}
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Todos los tipos</option>
+                  <option value="song">Canciones</option>
+                  <option value="medley">Medleys</option>
+                </select>
+              </div>
+              
+              <div className="flex items-end">
+                <button
+                  onClick={() => {
+                    setSearchText('');
+                    setFilterKey('');
+                    setFilterType('');
+                  }}
+                  className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 underline"
+                >
+                  Limpiar filtros
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="bg-white rounded-lg shadow overflow-hidden">
         {songs.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             No hay canciones en el pool. Añade la primera canción para empezar.
           </div>
+        ) : filteredSongs.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            No se encontraron canciones que coincidan con los filtros aplicados.
+            <button
+              onClick={() => {
+                setSearchText('');
+                setFilterKey('');
+                setFilterType('');
+              }}
+              className="block mx-auto mt-2 text-blue-600 hover:text-blue-800 underline"
+            >
+              Limpiar filtros
+            </button>
+          </div>
         ) : (
           <div className="overflow-x-auto">
+            <div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
+              <span className="text-sm text-gray-600">
+                Mostrando {filteredSongs.length} de {songs.length} canciones
+              </span>
+            </div>
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -384,7 +511,7 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {songs.map((song) => (
+                {filteredSongs.map((song) => (
                   <tr key={song.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap align-top">
                       {editingCell?.songId === song.id && editingCell.field === 'title' ? (

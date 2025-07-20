@@ -103,23 +103,23 @@ const SetlistPreviewModal: React.FC<SetlistPreviewModalProps> = ({ isOpen, onClo
     <>
       {/* This section is the interactive modal, hidden during printing */}
       <div 
-        className={`fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'} print:hidden`}
+        className={`fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'} print:hidden`}
         onClick={onClose}
       >
         <div 
-          className={`bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col font-sans relative transform transition-all duration-300 ${isOpen ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}
+          className={`bg-white rounded-xl sm:rounded-2xl shadow-2xl w-full max-w-2xl max-h-[95vh] sm:max-h-[90vh] flex flex-col font-sans relative transform transition-all duration-300 ${isOpen ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}
           onClick={(e) => e.stopPropagation()}
         >
           {setlist && (
             <>
-              <div className="flex items-center justify-between p-6 border-b border-gray-200">
-                <div className="flex items-center gap-4">
-                  <div className="bg-indigo-100 p-2 rounded-lg">
-                    <Music className="w-6 h-6 text-indigo-600" />
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 sm:p-6 border-b border-gray-200 gap-4">
+                <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
+                  <div className="bg-indigo-100 p-2 rounded-lg flex-shrink-0">
+                    <Music className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-600" />
                   </div>
-                  <h2 className="text-2xl font-bold text-gray-900 truncate">{setlist.name}</h2>
+                  <h2 className="text-lg sm:text-2xl font-bold text-gray-900 truncate">{setlist.name}</h2>
                 </div>
-                <div className="flex items-center gap-4 print:hidden">
+                <div className="flex items-center gap-2 sm:gap-4 print:hidden flex-wrap">
                   <button onClick={() => handleDownloadPDF(false)} className="flex items-center gap-2 px-2 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-xs" title="Descargar PDF Digital">
                     <Download className="w-3 h-3" />
                     Digital

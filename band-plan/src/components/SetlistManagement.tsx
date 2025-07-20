@@ -22,6 +22,8 @@ import {
   DndContext,
   closestCenter,
   PointerSensor,
+  TouchSensor,
+  KeyboardSensor,
   useSensor,
   useSensors,
   DragEndEvent,
@@ -88,8 +90,14 @@ function SortableSetlistItem({
   return (
     <div ref={setNodeRef} style={style} {...attributes} className="flex items-center gap-2 mb-2">
       {canManageSetlists && (
-        <div {...listeners} className="cursor-grab text-gray-400 py-3 px-2 touch-none">
-          <FaGripVertical />
+        <div 
+          {...listeners} 
+          className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 py-3 px-3 touch-none select-none min-w-[48px] min-h-[48px] flex items-center justify-center rounded-md hover:bg-gray-100 active:bg-gray-200 transition-colors"
+          role="button"
+          aria-label="Arrastrar para reordenar"
+          tabIndex={0}
+        >
+          <FaGripVertical className="text-lg" />
         </div>
       )}
       <div className="flex-grow">
@@ -149,7 +157,23 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
   const [setlistItems, setSetlistItems] = useState<SetlistItem[]>([]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 200,
+        tolerance: 5,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: (event, { context: { active, droppableRects, droppableContainers, collisionRect } }) => {
+        // Add keyboard navigation support for accessibility
+        return null;
+      },
+    })
   );
 
   useEffect(() => {
@@ -661,8 +685,9 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
         </form>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-1 space-y-3">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
+        <div className="lg:col-span-1 space-y-3">
+          <h3 className="text-lg font-semibold text-gray-800 mb-3 lg:hidden">Setlists</h3>
           {setlists.map((setlist) => (
             <div
               key={setlist.id}
@@ -680,16 +705,16 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
           )}
         </div>
 
-        <div className="md:col-span-2">
+        <div className="lg:col-span-2">
           {selectedSetlist ? (
-             <div className="bg-white p-6 rounded-lg shadow-md">
-                <div className="flex justify-between items-start mb-4">
-                    <div>
-                        <h3 className="text-xl font-bold text-gray-800">{selectedSetlist.name}</h3>
-                        <p className="text-sm text-gray-500">{selectedSetlist.description}</p>
+             <div className="bg-white p-4 lg:p-6 rounded-lg shadow-md">
+                <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start mb-4 gap-4">
+                    <div className="min-w-0 flex-1">
+                        <h3 className="text-xl font-bold text-gray-800 truncate">{selectedSetlist.name}</h3>
+                        <p className="text-sm text-gray-500 break-words">{selectedSetlist.description}</p>
                     </div>
                      {canManageSetlists && (
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2 lg:flex-nowrap">
                            <Button variant="primary" onClick={() => setShowCreateMedleyModal(true)}>
                                <FaPlus className="mr-1" /> Crear Medley
                            </Button>
@@ -705,7 +730,7 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
                         </div>
                      )}
                  </div>
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 xl:gap-8">
                <div>
                  <h4 className="font-semibold text-gray-700 mb-3">Canciones en el Setlist</h4>
                  <div className="space-y-2">
@@ -750,7 +775,7 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
                     onChange={(e) => setAddSongSearch(e.target.value)}
                     className="mb-2"
                    />
-                   <div className="space-y-2 max-h-80 overflow-y-auto pr-2">
+                   <div className="space-y-2 max-h-60 lg:max-h-80 overflow-y-auto pr-2">
                     {getAvailableSongs(selectedSetlist)
                       .filter(song => 
                         song.title.toLowerCase().includes(addSongSearch.toLowerCase()) ||

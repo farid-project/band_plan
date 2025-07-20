@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Group, GroupMember, Instrument } from '../types';
 import Button from '../components/Button';
-import { Plus, Music, User, Edit2, Calendar, Loader2, Trash2, ListMusic } from 'lucide-react';
+import { Plus, Music, User, Edit2, Calendar, Loader2, Trash2, ListMusic, BarChart3 } from 'lucide-react';
 import AddMemberModal from '../components/AddMemberModal';
 import EditMemberModal from '../components/EditMemberModal';
 import { toast } from 'react-hot-toast';
@@ -14,6 +14,7 @@ import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 import { safeSupabaseRequest } from '../lib/supabaseUtils';
 import CalendarInstructionsModal from '../components/CalendarInstructionsModal';
 import SetlistPage from '../components/SetlistPage';
+import AnalyticsDashboard from '../components/AnalyticsDashboard';
 
 interface ExtendedGroupMember extends GroupMember {
   instruments: {
@@ -41,7 +42,7 @@ export default function GroupManagement() {
   const [isUserMember, setIsUserMember] = useState(false);
   const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
   const [calendarUrl, setCalendarUrl] = useState('');
-  const [activeTab, setActiveTab] = useState<'overview' | 'setlists'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'setlists' | 'analytics'>('overview');
 
   useEffect(() => {
     if (id) {
@@ -434,6 +435,17 @@ export default function GroupManagement() {
             <ListMusic className="w-4 h-4" />
             <span>Canciones y Setlists</span>
           </button>
+          <button
+            onClick={() => setActiveTab('analytics')}
+            className={`${
+              activeTab === 'analytics'
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            <span>Analytics</span>
+          </button>
         </nav>
       </div>
 
@@ -496,6 +508,10 @@ export default function GroupManagement() {
           canManageSongs={userRole === 'admin' || isPrincipalMember}
           canManageSetlists={userRole === 'admin' || isPrincipalMember}
         />
+      )}
+
+      {activeTab === 'analytics' && group && id && (
+        <AnalyticsDashboard groupId={id} />
       )}
 
       {/* Modals */}
