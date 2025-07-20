@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Setlist, SetlistSong } from '../types';
-import { X, Music, Printer } from 'lucide-react';
+import { X, Music, Download } from 'lucide-react';
+import { generateSetlistPDF } from '../utils/pdfGenerator';
 
 // This component is ONLY for printing. It's invisible on screen.
 interface PrintableSetlistProps {
@@ -73,29 +74,30 @@ interface SetlistPreviewModalProps {
 const SetlistPreviewModal: React.FC<SetlistPreviewModalProps> = ({ isOpen, onClose, setlist, eventName, eventDate, bandName }) => {
   const [showArtists, setShowArtists] = useState(true);
 
-  const handlePrint = () => {
-    // 1. Create a container for the printable content
-    const printContainer = document.createElement('div');
-    printContainer.id = 'printable-content';
-    document.body.appendChild(printContainer);
-
-    // 2. Render the printable component into the container
-    const root = createRoot(printContainer);
-    root.render(<PrintableSetlist setlist={setlist} eventName={eventName} eventDate={eventDate} bandName={bandName} />);
-
-    // 3. Trigger the print dialog
-    // We need a slight delay to ensure the content is rendered before printing.
-    setTimeout(() => {
-      window.print();
-    }, 50);
-
-    // 4. Clean up after printing
-    window.onafterprint = () => {
-      root.unmount();
-      document.body.removeChild(printContainer);
-      window.onafterprint = null; // Clean up the event listener
-    };
+  const handleDownloadPDF = (printFriendly: boolean = false) => {
+    if (!setlist) return;
+    
+    // Convert setlist format to match the PDF generator expectations
+    const eventData = eventName && eventDate ? {
+      name: eventName,
+      date: eventDate
+    } : undefined;
+    
+    const pdf = generateSetlistPDF(setlist, eventData, bandName, printFriendly);
+    const suffix = printFriendly ? ' (Print)' : ' (Digital)';
+    const fileName = `${bandName || 'Setlist'} - ${eventName || 'Event'}${suffix}.pdf`;
+    
+    if (printFriendly) {
+      // Open in browser for print version
+      const pdfBlob = pdf.output('blob');
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      window.open(pdfUrl, '_blank');
+    } else {
+      // Download for digital version
+      pdf.save(fileName);
+    }
   };
+
 
   return (
     <>
@@ -118,8 +120,13 @@ const SetlistPreviewModal: React.FC<SetlistPreviewModalProps> = ({ isOpen, onClo
                   <h2 className="text-2xl font-bold text-gray-900 truncate">{setlist.name}</h2>
                 </div>
                 <div className="flex items-center gap-4 print:hidden">
-                  <button onClick={handlePrint} className="p-2 text-gray-500 hover:text-indigo-600 transition-colors" title="Imprimir Setlist">
-                    <Printer className="w-5 h-5" />
+                  <button onClick={() => handleDownloadPDF(false)} className="flex items-center gap-2 px-2 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-xs" title="Descargar PDF Digital">
+                    <Download className="w-3 h-3" />
+                    Digital
+                  </button>
+                  <button onClick={() => handleDownloadPDF(true)} className="flex items-center gap-2 px-2 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-xs" title="Descargar PDF para Imprimir">
+                    <Download className="w-3 h-3" />
+                    Impresión
                   </button>
                   <div className="flex items-center space-x-2">
                     <label htmlFor="showArtists" className="text-sm font-medium text-gray-600">Artistas</label>

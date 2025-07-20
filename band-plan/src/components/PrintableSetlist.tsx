@@ -1,5 +1,7 @@
 import React, { useEffect } from 'react';
-import { Setlist, Event } from '../types';
+import { Setlist, Event, Medley } from '../types';
+import { generateSetlistPDF } from '../utils/pdfGenerator';
+import { Download } from 'lucide-react';
 
 interface PrintableSetlistProps {
   setlist: Setlist;
@@ -9,6 +11,22 @@ interface PrintableSetlistProps {
 }
 
 const PrintableSetlist: React.FC<PrintableSetlistProps> = ({ setlist, event, bandName, preview }) => {
+  const handleDownloadPDF = (printFriendly: boolean = false) => {
+    const pdf = generateSetlistPDF(setlist, event, bandName, printFriendly);
+    const suffix = printFriendly ? ' (Print)' : ' (Digital)';
+    const fileName = `${bandName || 'Setlist'} - ${event?.name || 'Event'}${suffix}.pdf`;
+    
+    if (printFriendly) {
+      // Open in browser for print version
+      const pdfBlob = pdf.output('blob');
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      window.open(pdfUrl, '_blank');
+    } else {
+      // Download for digital version
+      pdf.save(fileName);
+    }
+  };
+
   useEffect(() => {
     // Apply the CSS styles
     const style = document.createElement('style');
@@ -49,8 +67,34 @@ const PrintableSetlist: React.FC<PrintableSetlistProps> = ({ setlist, event, ban
         padding: 24px 12px 16px 12px;
         text-align: center;
         border-bottom: 5px solid var(--border-color);
+        position: relative;
+      }
+      
+      .pdf-download-buttons {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        display: flex;
+        gap: 8px;
       }
 
+      .pdf-download-btn {
+        background: rgba(255, 255, 255, 0.2);
+        color: white;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        padding: 6px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 11px;
+        transition: background-color 0.2s;
+      }
+      
+      .pdf-download-btn:hover {
+        background: rgba(255, 255, 255, 0.3);
+      }
 
       header h1 {
         font-family: 'Florida Project Phase One', 'Special Elite', cursive;
@@ -69,30 +113,39 @@ const PrintableSetlist: React.FC<PrintableSetlistProps> = ({ setlist, event, ban
         padding: 24px 12px 24px 12px;
       }
 
+      .song-list-container {
+        width: 100%;
+        overflow: hidden;
+      }
+      
+      .song-column {
+        float: left;
+        width: 48%;
+        margin-right: 4%;
+        box-sizing: border-box;
+      }
+      
+      .song-column:last-child {
+        margin-right: 0;
+      }
+
       .song-list {
         list-style-type: none;
         padding: 0;
         margin: 0;
-        column-count: 2;
-        column-gap: 36px;
       }
 
       .song-list li {
         padding: 8px 0 6px 0;
         margin-bottom: 2px;
         border-bottom: 1px dashed var(--border-color);
-        counter-increment: song-counter;
         display: flex;
         align-items: flex-start;
-        break-inside: avoid-column;
-        -webkit-column-break-inside: avoid;
-        page-break-inside: avoid;
         font-size: 1em;
         line-height: 1.25;
       }
 
-      .song-list li::before {
-        content: counter(song-counter, decimal-leading-zero);
+      .song-number {
         font-weight: bold;
         color: var(--primary-color);
         margin-right: 14px;
@@ -129,29 +182,28 @@ const PrintableSetlist: React.FC<PrintableSetlistProps> = ({ setlist, event, ban
       .medley-title {
         font-weight: bold;
         font-style: italic;
-        margin-bottom: 2px;
+        margin-bottom: 6px;
         color: #495057;
-        font-size: 1em;
-        line-height: 1.2;
-        word-break: break-word;
+        font-size: 1.02em;
+        border-bottom: 1px solid #e9ecef;
+        padding-bottom: 4px;
       }
 
       .medley-songs {
-        list-style-type: disc;
+        list-style-type: none;
+        padding-left: 10px;
         margin: 0;
-        padding-left: 16px;
-        font-size: 0.93em;
       }
 
       .medley-songs li {
         border: none;
-        padding: 1px 0;
-        counter-increment: none;
-        line-height: 1.2;
+        padding: 3px 0;
+        font-size: 0.95em;
+        color: #6c757d;
       }
 
-      .medley-songs li::before {
-        content: none;
+      .medley-songs li span {
+        line-height: 1.2;
       }
 
       footer {
@@ -175,16 +227,14 @@ const PrintableSetlist: React.FC<PrintableSetlistProps> = ({ setlist, event, ban
       }
 
       /* Print Styles */
+      @page {
+        margin: 0.5in 0.3in;
+        size: letter;
+        orphans: 1;
+        widows: 1;
+      }
+
       @media print {
-  /* Oculta encabezado y pie de página del navegador */
-}
-
-@page {
-  margin: 0;
-  size: auto;
-}
-
-@media print {
         .printable-setlist, .printable-setlist * {
           visibility: visible !important;
           position: static !important;
@@ -204,87 +254,60 @@ const PrintableSetlist: React.FC<PrintableSetlistProps> = ({ setlist, event, ban
           background-color: #fff;
           color: #000;
           padding: 0;
+          font-size: 10pt;
         }
         .container {
           box-shadow: none;
           border-radius: 0;
           max-width: 100%;
-          background-color: #fff;
         }
         header {
-          background-color: #fff;
-          color: #000;
-          border-bottom: 2px solid #000;
-          padding: 10px;
+          padding: 20px 10px;
+          border-bottom: 2px solid #333;
         }
-        header h1, header p {
+        header h1 {
+          font-size: 24pt;
           color: #000;
         }
-        .song-list {
-          color: #000;
-          column-count: 2 !important;
-          column-gap: 40px !important;
+        header p {
+          font-size: 12pt;
+          color: #333;
+        }
+        main {
+          padding: 15px 10px;
         }
         .song-list li {
+          padding: 6px 0;
           border-bottom: 1px solid #ccc;
-          padding: 8px 0;
-          margin-bottom: 0;
         }
-        .song-list li::before {
-          color: #000;
+        .song-number {
+          font-size: 11pt;
         }
-        .song-list li span[contenteditable] {
-          color: #000;
+        .pdf-download-buttons {
+          display: none;
         }
         .medley-container {
-          background-color: #fff;
-          border: 1px solid #ccc;
-          padding: 8px;
-          margin: 4px 0;
-        }
-        .medley-title {
-          color: #000;
-        }
-        :root {
-          --primary-color: #000;
-          --border-color: #ccc;
+          background-color: #f9f9f9;
+          border: 1px solid #ddd;
         }
       }
     `;
     document.head.appendChild(style);
 
-    // Add Google Fonts
-    const link1 = document.createElement('link');
-    link1.rel = 'preconnect';
-    link1.href = 'https://fonts.googleapis.com';
-    document.head.appendChild(link1);
-
-    const link2 = document.createElement('link');
-    link2.rel = 'preconnect';
-    link2.href = 'https://fonts.gstatic.com';
-    link2.crossOrigin = 'anonymous';
-    document.head.appendChild(link2);
-
-    const link3 = document.createElement('link');
-    link3.href = 'https://fonts.googleapis.com/css2?family=Special+Elite&family=Roboto+Mono:wght@400;700&display=swap';
-    link3.rel = 'stylesheet';
-    document.head.appendChild(link3);
-
     return () => {
       document.head.removeChild(style);
-      document.head.removeChild(link1);
-      document.head.removeChild(link2);
-      document.head.removeChild(link3);
     };
   }, []);
 
-  console.log('PrintableSetlist render', { setlist, event, bandName });
-
   // Combine and sort songs and medleys
   const combinedItems = [
-    ...(setlist.songs?.map(s => ({ ...s, type: 'song' })) || []),
-    ...(setlist.medleys?.map(m => ({ ...m, type: 'medley' })) || [])
+    ...(setlist.songs?.map(s => ({ ...s, type: 'song' as const })) || []),
+    ...(setlist.medleys?.map(m => ({ ...m, type: 'medley' as const })) || [])
   ].sort((a, b) => a.position - b.position);
+
+  const midPoint = Math.ceil(combinedItems.length / 2);
+  const leftColumn = combinedItems.slice(0, midPoint);
+  const rightColumn = combinedItems.slice(midPoint);
 
   // Format event date
   const formatEventDate = (dateString: string) => {
@@ -296,44 +319,91 @@ const PrintableSetlist: React.FC<PrintableSetlistProps> = ({ setlist, event, ban
     return `${day}/${month}/${year}`;
   };
 
+  const renderItem = (item: (typeof combinedItems)[0]) => {
+    if (item.type === 'song' && item.song) {
+      return (
+        <span contentEditable={true}>
+          {item.song.title}
+          {item.song.artist && ` - ${item.song.artist}`}
+        </span>
+      );
+    }
+
+    if (item.type === 'medley') {
+      const medley = item as Medley;
+      return (
+        <div className="medley-container">
+          <div className="medley-title">{medley.name}</div>
+          {!preview && (
+            <ul className="medley-songs">
+              {medley.songs?.map((medleySongItem: any) => (
+                <li key={medleySongItem.song.id}>
+                  <span contentEditable={true}>
+                    {medleySongItem.song.title}
+                    {medleySongItem.song.artist && ` - ${medleySongItem.song.artist}`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      );
+    }
+
+    return null;
+  };
+
   return (
     <div className="container printable-setlist">
       <header>
-      <h1 contentEditable={true}>{bandName || 'NOMBRE DE LA BANDA'}</h1>
+        <div className="pdf-download-buttons">
+          <button 
+            className="pdf-download-btn"
+            onClick={() => handleDownloadPDF(false)}
+            title="Descargar PDF Digital"
+          >
+            <Download size={16} />
+            PDF Digital
+          </button>
+          <button 
+            className="pdf-download-btn print-btn"
+            onClick={() => handleDownloadPDF(true)}
+            title="Descargar PDF para Imprimir"
+          >
+            <Download size={16} />
+            PDF Impresión
+          </button>
+        </div>
+        <h1 contentEditable={true}>{bandName || 'NOMBRE DE LA BANDA'}</h1>
         <p contentEditable={true}>
           {event ? `${event.name || 'Evento'} - ${formatEventDate(event.date)}` : 'Lugar del Evento - Fecha'}
         </p>
       </header>
 
       <main id="setlist">
-        <ol className="song-list">
-          {combinedItems.map((item) => (
-            <li key={`${item.type}-${item.id}`}>
-              {item.type === 'song' ? (
-                <span contentEditable={true}>
-                  {(item as any).song.title}
-                  {(item as any).song.artist && ` - ${(item as any).song.artist}`}
-                </span>
-              ) : (
-                <div className="medley-container">
-                  <div className="medley-title">{item.name}</div>
-                  {!preview && (
-                    <ul className="medley-songs">
-                      {(item as any).songs.map((medleySongItem: any) => (
-                        <li key={medleySongItem.song.id}>
-                          <span contentEditable={true}>
-                            {medleySongItem.song.title}
-                            {medleySongItem.song.artist && ` - ${medleySongItem.song.artist}`}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
-            </li>
-          ))}
-        </ol>
+        <div className="song-list-container">
+          <div className="song-column">
+            <ol className="song-list">
+              {leftColumn.map((item, index) => (
+                <li key={`${item.type}-${item.id}`} data-number={index + 1}>
+                  <span className="song-number">{String(index + 1).padStart(2, '0')}</span>
+                  {renderItem(item)}
+                </li>
+              ))}
+            </ol>
+          </div>
+          
+          <div className="song-column">
+            <ol className="song-list" start={leftColumn.length + 1}>
+              {rightColumn.map((item, index) => (
+                <li key={`${item.type}-${item.id}`} data-number={leftColumn.length + index + 1}>
+                  <span className="song-number">{String(leftColumn.length + index + 1).padStart(2, '0')}</span>
+                  {renderItem(item)}
+                </li>
+              ))}
+            </ol>
+          </div>
+        </div>
       </main>
     </div>
   );

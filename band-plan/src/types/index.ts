@@ -68,6 +68,7 @@ export interface Setlist {
   created_at: string;
   updated_at: string;
   songs?: SetlistSong[];
+  medleys?: Medley[];
 }
 
 export interface SetlistSong {
