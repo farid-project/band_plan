@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Event, GroupMember, Setlist } from '../types';
 import { Calendar, Clock, Trash2, Edit2, Users, MapPin, Music } from 'lucide-react';
-import { format, parseISO, isFuture, startOfDay } from 'date-fns';
+import { format, parseISO, isFuture, startOfDay, isToday } from 'date-fns';
 import { toast } from 'react-hot-toast';
 import Button from './Button';
 import EventModal from './EventModal';
@@ -334,13 +334,15 @@ export default function EventsList({
       : location;
   };
 
-  const futureEvents = events.filter(event => 
-    isFuture(startOfDay(parseISO(event.date)))
-  );
+  const futureEvents = events.filter(event => {
+    const eventDate = parseISO(event.date);
+    return isFuture(startOfDay(eventDate)) || isToday(eventDate);
+  });
 
-  const pastEvents = events.filter(event => 
-    !isFuture(startOfDay(parseISO(event.date)))
-  );
+  const pastEvents = events.filter(event => {
+    const eventDate = parseISO(event.date);
+    return !isFuture(startOfDay(eventDate)) && !isToday(eventDate);
+  });
 
   const getMemberRole = (member: GroupMember) => {
     return member.role?.name || 'Sin rol';
