@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { safeSupabaseRequest } from '../lib/supabaseUtils';
 import { useAuthStore } from '../store/authStore';
@@ -145,9 +145,203 @@ useEffect(() => {
   }
 }, [user, groupId]);
 
+  // Memoizar el cálculo de disponibilidad del grupo con algoritmo optimizado por miembro
+  const { groupAvailableDatesCalculated, groupNotAvailableDatesCalculated } = useMemo(() => {
+    console.log('\n=== INICIO cálculo ULTRA-OPTIMIZADO de disponibilidad ===');
+    
+    // Si no hay miembros en el grupo, no hay fechas disponibles
+    if (members.length === 0) {
+      console.log('No hay miembros en el grupo');
+      return {
+        groupAvailableDatesCalculated: [],
+        groupNotAvailableDatesCalculated: []
+      };
+    }
+
+    const principalMembers = members.filter(m => m.role_in_group === 'principal');
+    const substitutes = members.filter(m => m.role_in_group === 'sustituto');
+    
+    console.log(`Miembros principales: ${principalMembers.length}, Sustitutos: ${substitutes.length}`);
+    
+    // Si no hay miembros principales, no hay fechas disponibles
+    if (principalMembers.length === 0) {
+      console.log('No hay miembros principales en el grupo');
+      return {
+        groupAvailableDatesCalculated: [],
+        groupNotAvailableDatesCalculated: []
+      };
+    }
+    
+    // PRE-PROCESAMIENTO: Crear Maps optimizados
+    console.log('🚀 Pre-procesando datos una sola vez...');
+    
+    // Map de disponibilidades marcadas: userId -> Set de fechas
+    const availabilityMap = new Map<string, Set<string>>();
+    availabilities.forEach(member => {
+      const dateSet = new Set<string>();
+      member.dates.forEach(date => {
+        dateSet.add(format(date, 'yyyy-MM-dd'));
+      });
+      availabilityMap.set(member.userId, dateSet);
+    });
+    
+    // Map de eventos del grupo: userId -> Set de fechas
+    const groupEventMap = new Map<string, Set<string>>();
+    memberEvents.forEach(event => {
+      if (!groupEventMap.has(event.user_id)) {
+        groupEventMap.set(event.user_id, new Set());
+      }
+      groupEventMap.get(event.user_id)!.add(format(new Date(event.date), 'yyyy-MM-dd'));
+    });
+    
+    // Map de eventos externos: userId -> Set de fechas
+    const externalEventMap = new Map<string, Set<string>>();
+    memberExternalEvents.forEach(event => {
+      if (!externalEventMap.has(event.user_id)) {
+        externalEventMap.set(event.user_id, new Set());
+      }
+      externalEventMap.get(event.user_id)!.add(format(new Date(event.date), 'yyyy-MM-dd'));
+    });
+    
+    // Map de instrumentos: userId -> Set de instrumentos
+    const instrumentMap = new Map<string, Set<string>>();
+    [...principalMembers, ...substitutes].forEach(member => {
+      if (member.user_id) {
+        instrumentMap.set(member.user_id, new Set(member.instruments.map(i => i.id)));
+      }
+    });
+    
+    // PASO 1: PRE-CALCULAR disponibilidad real POR MIEMBRO (una sola vez por miembro)
+    console.log('📅 Calculando disponibilidad real por miembro...');
+    
+    interface MemberAvailabilityInfo {
+      member: GroupMember;
+      reallyAvailableDates: Set<string>;
+      allMarkedDates: Set<string>;
+      blockedByGroupEvents: Set<string>;
+      blockedByExternalEvents: Set<string>;
+    }
+    
+    const calculateRealAvailabilityForMember = (member: GroupMember): MemberAvailabilityInfo => {
+      if (!member.user_id) {
+        return {
+          member,
+          reallyAvailableDates: new Set(),
+          allMarkedDates: new Set(),
+          blockedByGroupEvents: new Set(),
+          blockedByExternalEvents: new Set()
+        };
+      }
+      
+      const markedDates = availabilityMap.get(member.user_id) || new Set();
+      const groupEventDates = groupEventMap.get(member.user_id) || new Set();
+      const externalEventDates = externalEventMap.get(member.user_id) || new Set();
+      
+      // Fechas realmente disponibles = marcadas - eventos del grupo - eventos externos
+      const reallyAvailable = new Set<string>();
+      markedDates.forEach(date => {
+        if (!groupEventDates.has(date) && !externalEventDates.has(date)) {
+          reallyAvailable.add(date);
+        }
+      });
+      
+      console.log(`${member.name}: ${markedDates.size} marcadas, ${groupEventDates.size} eventos grupo, ${externalEventDates.size} eventos externos => ${reallyAvailable.size} realmente disponibles`);
+      
+      return {
+        member,
+        reallyAvailableDates: reallyAvailable,
+        allMarkedDates: markedDates,
+        blockedByGroupEvents: groupEventDates,
+        blockedByExternalEvents: externalEventDates
+      };
+    };
+    
+    // Calcular disponibilidad real para TODOS los miembros
+    const principalAvailability = principalMembers.map(calculateRealAvailabilityForMember);
+    const substituteAvailability = substitutes.map(calculateRealAvailabilityForMember);
+    
+    // PASO 2: Encontrar TODAS las fechas únicas mencionadas
+    const allPossibleDates = new Set<string>();
+    [...principalAvailability, ...substituteAvailability].forEach(memberInfo => {
+      memberInfo.allMarkedDates.forEach(date => allPossibleDates.add(date));
+      memberInfo.blockedByGroupEvents.forEach(date => allPossibleDates.add(date));
+      memberInfo.blockedByExternalEvents.forEach(date => allPossibleDates.add(date));
+    });
+    
+    console.log(`🎯 Total de fechas únicas a evaluar: ${allPossibleDates.size}`);
+    
+    // PASO 3: Evaluar disponibilidad del grupo (UNA SOLA VEZ por fecha, no por miembro)
+    const availableDates: Date[] = [];
+    const notAvailableDates: Date[] = [];
+    
+    Array.from(allPossibleDates).forEach(dateStr => {
+      console.log(`\n📅 Evaluando fecha: ${dateStr}`);
+      
+      // Principales disponibles en esta fecha
+      const availablePrincipals = principalAvailability.filter(pInfo => 
+        pInfo.reallyAvailableDates.has(dateStr)
+      );
+      
+      // Principales NO disponibles en esta fecha
+      const unavailablePrincipals = principalAvailability.filter(pInfo => 
+        !pInfo.reallyAvailableDates.has(dateStr)
+      );
+      
+      console.log(`   Principales disponibles: ${availablePrincipals.length}/${principalMembers.length}`);
+      
+      if (unavailablePrincipals.length === 0) {
+        // Todos los principales disponibles
+        console.log(`   ✅ DISPONIBLE: Todos los principales disponibles`);
+        availableDates.push(new Date(dateStr));
+      } else {
+        // Verificar si los principales faltantes pueden ser sustituidos
+        console.log(`   🔄 Verificando sustitutos para ${unavailablePrincipals.length} principales faltantes...`);
+        
+        const canBeFullySubstituted = unavailablePrincipals.every(principalInfo => {
+          const requiredInstruments = instrumentMap.get(principalInfo.member.user_id!) || new Set();
+          
+          // Sustitutos disponibles en esta fecha
+          const availableSubsForDate = substituteAvailability.filter(subInfo => 
+            subInfo.reallyAvailableDates.has(dateStr)
+          );
+          
+          // ¿Algún sustituto disponible puede cubrir todos los instrumentos requeridos?
+          const canBeCovered = availableSubsForDate.some(subInfo => {
+            const subInstruments = instrumentMap.get(subInfo.member.user_id!) || new Set();
+            return Array.from(requiredInstruments).every(instrId => subInstruments.has(instrId));
+          });
+          
+          console.log(`     ${principalInfo.member.name} puede ser sustituido: ${canBeCovered}`);
+          return canBeCovered;
+        });
+        
+        if (canBeFullySubstituted) {
+          console.log(`   ✅ DISPONIBLE: Con sustitutos`);
+          availableDates.push(new Date(dateStr));
+        } else {
+          console.log(`   ❌ NO DISPONIBLE: No se pueden cubrir todos los principales faltantes`);
+          notAvailableDates.push(new Date(dateStr));
+        }
+      }
+    });
+
+    console.log('\n=== RESUMEN ULTRA-OPTIMIZADO ===');
+    console.log(`📊 Fechas evaluadas: ${allPossibleDates.size}`);
+    console.log(`✅ Fechas disponibles: ${availableDates.length}`);
+    console.log(`❌ Fechas NO disponibles: ${notAvailableDates.length}`);
+    console.log(`🎯 Logs por fecha reducidos de ~${allPossibleDates.size * (principalMembers.length + substitutes.length)} a ${allPossibleDates.size}`);
+    
+    return {
+      groupAvailableDatesCalculated: availableDates,
+      groupNotAvailableDatesCalculated: notAvailableDates
+    };
+  }, [members, availabilities, memberEvents, memberExternalEvents]);
+
+  // Actualizar el estado cuando cambie el cálculo memoizado
   useEffect(() => {
-    calculateGroupAvailability();
-  }, [availabilities, memberEvents, groupEvents, memberExternalEvents]);
+    setGroupAvailableDates(groupAvailableDatesCalculated);
+    setGroupNotAvailableDates(groupNotAvailableDatesCalculated);
+  }, [groupAvailableDatesCalculated, groupNotAvailableDatesCalculated]);
 
   useEffect(() => {
     if (onAvailableDatesChange) {
@@ -155,7 +349,7 @@ useEffect(() => {
     }
   }, [groupAvailableDates, onAvailableDatesChange]);
 
-  const checkAdminStatus = async () => {
+  const checkAdminStatus = useCallback(async () => {
     interface UserRole {
       role: string;
     }
@@ -174,7 +368,7 @@ useEffect(() => {
     if (response) {
       setIsAdmin(response.role === 'admin');
     }
-  };
+  }, [user?.id]);
 
   const fetchMemberEvents = async () => {
     interface EventData {
@@ -348,46 +542,6 @@ useEffect(() => {
     }
   };
 
-  const isMemberAvailableOnDate = (member: GroupMember, date: Date) => {
-    console.log(`\nVerificando disponibilidad para el miembro: ${member.name} (ID: ${member.user_id}) en la fecha: ${format(date, 'yyyy-MM-dd')}`);
-    
-    // Verificar si el miembro tiene eventos en este grupo
-    const hasGroupEventOnDate = memberEvents.some(event => {
-      const eventDate = new Date(event.date);
-      const result = (event.user_id === member.user_id) && isSameDay(eventDate, date);
-      if (result) {
-        console.log(`- Tiene un evento en el grupo actual el día: ${format(eventDate, 'yyyy-MM-dd')}`);
-      }
-      return result;
-    });
-
-    if (hasGroupEventOnDate) {
-      console.log(`=> El miembro ${member.name} no está disponible debido a un evento en el grupo actual.`);
-      return false;
-    }
-
-    // Verificar si el miembro tiene eventos en otros grupos
-    const hasExternalEventOnDate = memberExternalEvents.some(event => {
-      const eventDate = new Date(event.date);
-      const result = (event.user_id === member.user_id) && isSameDay(eventDate, date);
-      if (result) {
-        console.log(`- Tiene un evento en otra banda el día: ${format(eventDate, 'yyyy-MM-dd')}`);
-      }
-      return result;
-    });
-
-    if (hasExternalEventOnDate) {
-      console.log(`=> El miembro ${member.name} no está disponible debido a un evento en otra banda.`);
-      return false;
-    }
-
-    // Verificar la disponibilidad del miembro
-    const memberAvailability = availabilities.find(a => a.userId === member.user_id);
-    const isAvailable = memberAvailability?.dates.some(d => isSameDay(d, date)) ?? false;
-    console.log(`- Disponibilidad marcada: ${isAvailable ? 'Sí' : 'No'}`);
-    
-    return isAvailable;
-  };
 
   const getEventsForDate = (date: Date) => {
     return groupEvents.filter(event => 
@@ -395,148 +549,6 @@ useEffect(() => {
     );
   };
 
-  const calculateGroupAvailability = () => {
-    try {
-      console.log('\n=== INICIO calculateGroupAvailability ===');
-      console.log('Members recibidos:', members);
-      
-      // Si no hay miembros en el grupo, no hay fechas disponibles
-      if (members.length === 0) {
-        console.log('No hay miembros en el grupo');
-        setGroupAvailableDates([]);
-        setGroupNotAvailableDates([]);
-        return;
-      }
-    
-    const allDatesSet = new Set<string>();
-    console.log('1. Creando conjunto de fechas...');
-    
-    const availableDates: Date[] = [];
-    const notAvailableDates: Date[] = [];
-    
-    const principalMembers = members.filter(m => m.role_in_group === 'principal');
-    console.log('4. Miembros principales encontrados:', principalMembers.length);
-    console.log('5. Nombres de principales:', principalMembers.map(m => m.name));
-    
-    // Si no hay miembros principales, no hay fechas disponibles
-    if (principalMembers.length === 0) {
-      console.log('No hay miembros principales en el grupo');
-      setGroupAvailableDates([]);
-      setGroupNotAvailableDates([]);
-      return;
-    }
-    
-    availabilities.forEach(member => {
-      member.dates.forEach(date => {
-        allDatesSet.add(format(date, 'yyyy-MM-dd'));
-      });
-    });
-    
-    memberExternalEvents.forEach(event => {
-      allDatesSet.add(format(new Date(event.date), 'yyyy-MM-dd'));
-    });
-    console.log('3. Fechas incluyendo eventos externos:', Array.from(allDatesSet));
-    
-    const allDates = Array.from(allDatesSet).map(dateStr => new Date(dateStr));
-    
-    console.log('4. Miembros principales encontrados:', principalMembers.length);
-    console.log('5. Nombres de principales:', principalMembers.map(m => m.name));
-    
-    const substitutes = members.filter(m => m.role_in_group === 'sustituto');
-    console.log('6. Sustitutos encontrados:', substitutes.length);
-
-    allDates.forEach(date => {
-      const dateStr = format(date, 'yyyy-MM-dd');
-      console.log(`\n=== Analizando fecha: ${dateStr} ===`);
-      console.log('Miembros principales a verificar:', principalMembers.map(m => m.name));
-      
-      // Aquí es donde queremos verificar si llegamos
-      principalMembers.forEach(principal => {
-        console.log(`\nVerificando principal: ${principal.name}`);
-        
-        // Verificar disponibilidad marcada
-        const memberAvail = availabilities.find(a => a.userId === principal.user_id);
-        const hasMarkedAvailability = memberAvail?.dates.some(d => isSameDay(d, date)) ?? false;
-        console.log(`- Disponibilidad marcada: ${hasMarkedAvailability}`);
-        
-        // Verificar eventos en el grupo actual
-        const hasGroupEvent = memberEvents.some(event => 
-          event.user_id === principal.user_id && 
-          isSameDay(new Date(event.date), date)
-        );
-        console.log(`- Tiene evento en este grupo: ${hasGroupEvent}`);
-        
-        // Verificar eventos externos
-        const hasExternalEvent = memberExternalEvents.some(event => 
-          event.user_id === principal.user_id && 
-          isSameDay(new Date(event.date), date)
-        );
-        console.log(`- Tiene evento externo: ${hasExternalEvent}`);
-        
-        // Disponibilidad final
-        const isAvailable = hasMarkedAvailability && !hasGroupEvent && !hasExternalEvent;
-        console.log(`=> Disponibilidad final: ${isAvailable}`);
-      });
-      
-      const unavailablePrincipals = principalMembers.filter(principal => {
-        const isAvailable = isMemberAvailableOnDate(principal, date);
-        console.log(`${principal.name} disponible: ${isAvailable}`);
-        return !isAvailable;
-      });
-
-      console.log(`\nPrincipales NO disponibles (${unavailablePrincipals.length}):`, 
-        unavailablePrincipals.map(p => p.name));
-
-      if (unavailablePrincipals.length === 0) {
-        console.log(`=> La fecha ${dateStr} está disponible para el grupo (todos los principales disponibles).`);
-        availableDates.push(date);
-      } else {
-        console.log(`\nVerificando sustitutos para ${dateStr}...`);
-        
-        const canBeSubstituted = unavailablePrincipals.every(principal => {
-          console.log(`\nBuscando sustitutos para ${principal.name}:`);
-          const requiredInstruments = principal.instruments.map(i => i.id);
-          console.log(`- Instrumentos requeridos:`, requiredInstruments);
-          
-          const availableSubstitutes = substitutes.filter(sub => {
-            const isAvailable = isMemberAvailableOnDate(sub, date);
-            console.log(`- Sustituto ${sub.name}: Disponible=${isAvailable}`);
-            return isAvailable;
-          });
-          
-          console.log(`- Sustitutos disponibles:`, availableSubstitutes.map(s => s.name));
-          
-          const canCoverInstruments = availableSubstitutes.some(sub => {
-            const subInstruments = sub.instruments.map(i => i.id);
-            const covers = requiredInstruments.every(instrId => subInstruments.includes(instrId));
-            console.log(`  * ${sub.name} puede cubrir instrumentos: ${covers}`);
-            return covers;
-          });
-
-          console.log(`=> ${principal.name} puede ser sustituido: ${canCoverInstruments}`);
-          return canCoverInstruments;
-        });
-
-        if (canBeSubstituted) {
-          console.log(`=> La fecha ${dateStr} está disponible mediante sustituciones.`);
-          availableDates.push(date);
-        } else {
-          console.log(`=> La fecha ${dateStr} NO está disponible para el grupo.`);
-          notAvailableDates.push(date);
-        }
-      }
-    });
-
-    console.log('\n=== RESUMEN FINAL ===');
-    console.log('Fechas disponibles:', availableDates.map(d => format(d, 'yyyy-MM-dd')));
-    console.log('Fechas NO disponibles:', notAvailableDates.map(d => format(d, 'yyyy-MM-dd')));
-    
-    setGroupAvailableDates(availableDates);
-    setGroupNotAvailableDates(notAvailableDates);
-    } catch (error) {
-      console.error('ERROR en calculateGroupAvailability:', error);
-    }
-  };
 
   const canManageOtherMembers = () => {
     const currentMember = members.find(m => m.user_id === user?.id);
@@ -572,8 +584,7 @@ useEffect(() => {
         fetchMemberExternalEvents()
       ]);
       
-      // Actualizar la disponibilidad del grupo
-      calculateGroupAvailability();
+      // El cálculo de disponibilidad se actualiza automáticamente via useMemo
       
       // Restaurar la posición de desplazamiento
       window.scrollTo(0, scrollPosition);
@@ -690,8 +701,7 @@ useEffect(() => {
             return avail;
           }));
           
-          // Recalcular la disponibilidad del grupo
-          calculateGroupAvailability();
+          // La disponibilidad del grupo se recalcula automáticamente
         } catch (error) {
           console.error('Error inesperado al eliminar disponibilidad:', error);
           toast.error('Ha ocurrido un error al procesar tu solicitud');
@@ -726,8 +736,7 @@ useEffect(() => {
             return avail;
           }));
           
-          // Recalcular la disponibilidad del grupo
-          calculateGroupAvailability();
+          // La disponibilidad del grupo se recalcula automáticamente
         } catch (error) {
           console.error('Error inesperado al añadir disponibilidad:', error);
           toast.error('Ha ocurrido un error al procesar tu solicitud');
