@@ -104,26 +104,15 @@ export default function ImportPlaylistModal({
         setImportProgress(Math.round(((i + 1) / totalTracks) * 100));
 
         try {
-          // Try to get audio features, but continue without them if it fails
-          let audioFeatures = null;
-          try {
-            audioFeatures = await spotifyService.getAudioFeatures(track.id);
-          } catch (audioError) {
-            console.warn(`No se pudieron obtener audio features para "${track.name}":`, audioError);
-            // Continue without audio features
-          }
-          
           const durationMinutes = Math.round(track.duration_ms / 60000);
-          const key = audioFeatures?.key !== undefined ? 
-            ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][audioFeatures.key] : '';
           
           // Create song in database
           const songData = {
             title: track.name,
             artist: track.artists.map(a => a.name).join(', '),
             duration_minutes: durationMinutes,
-            key: key,
-            notes: `Popularidad: ${track.popularity}% | Álbum: ${track.album.name}${audioFeatures?.tempo ? ` | Tempo: ${Math.round(audioFeatures.tempo)} BPM` : ''}`,
+            key: '',
+            notes: `Popularidad: ${track.popularity}% | Álbum: ${track.album.name}`,
             group_id: groupId,
             created_by: user.id
           };

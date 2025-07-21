@@ -15,7 +15,6 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import AcceptInvitation from './pages/AcceptInvitation';
 import ForgotPassword from './ForgotPassword';
 import ResetPassword from './ResetPassword';
-import BacklinkFooter from './components/BacklinkFooter';
 
 
 function App() {
@@ -78,6 +77,13 @@ function App() {
   const handleSpotifyAuth = async (code: string, state: string) => {
     try {
       console.log('🎵 App: Iniciando autenticación de Spotify...');
+      
+      // Clear URL immediately to prevent re-processing
+      const url = new URL(window.location.href);
+      url.searchParams.delete('code');
+      url.searchParams.delete('state');
+      window.history.replaceState({}, document.title, url.toString());
+      
       const success = await spotifyService.handleAuthCallback(code, state);
       
       if (success) {
@@ -88,7 +94,6 @@ function App() {
         // Redirect back to the original page
         const returnUrl = localStorage.getItem('spotify_return_url');
         console.log('🎵 Return URL saved:', returnUrl);
-        console.log('🎵 Current URL:', window.location.href);
         
         if (returnUrl) {
           const returnUrlObj = new URL(returnUrl);
@@ -100,6 +105,8 @@ function App() {
             localStorage.removeItem('spotify_return_url');
             window.location.href = returnUrl;
             return;
+          } else {
+            localStorage.removeItem('spotify_return_url');
           }
         }
       } else {
@@ -108,13 +115,7 @@ function App() {
       }
     } catch (error) {
       console.error('❌ App: Error en callback de Spotify:', error);
-      toast.error('Error al autenticar con Spotify');
-    } finally {
-      // Limpiar URL
-      const url = new URL(window.location.href);
-      url.searchParams.delete('code');
-      url.searchParams.delete('state');
-      window.history.replaceState({}, document.title, url.toString());
+      toast.error(`Error al autenticar con Spotify: ${error.message}`);
     }
   };
 
@@ -174,7 +175,6 @@ function App() {
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />
           </Routes>
         </main>
-        <BacklinkFooter />
         <Toaster position="top-right" />
       </div>
     </Router>

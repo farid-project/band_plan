@@ -57,6 +57,7 @@ class SpotifyService {
   private accessToken: string | null = null;
   private refreshToken: string | null = null;
   private tokenExpiry: number | null = null;
+  private isProcessingAuth: boolean = false;
 
   constructor() {
     // Load tokens from localStorage on initialization
@@ -89,17 +90,43 @@ class SpotifyService {
   }
 
   async handleAuthCallback(code: string, state: string): Promise<boolean> {
-    const storedState = localStorage.getItem('spotify_auth_state');
-    const codeVerifier = localStorage.getItem('spotify_code_verifier');
+    // Prevent duplicate processing
+    if (this.isProcessingAuth) {
+      console.log('🎵 Already processing auth, skipping...');
+      return false;
+    }
 
-    if (state !== storedState) {
-      throw new Error('State mismatch');
-    }
-    if (!codeVerifier) {
-      throw new Error('Code verifier not found');
-    }
+    this.isProcessingAuth = true;
 
     try {
+      const storedState = localStorage.getItem('spotify_auth_state');
+      const codeVerifier = localStorage.getItem('spotify_code_verifier');
+
+      console.log('🎵 Spotify auth callback:', {
+        receivedState: state,
+        storedState: storedState,
+        hasCodeVerifier: !!codeVerifier,
+        codeLength: code?.length
+      });
+
+      if (!storedState) {
+        console.error('❌ No stored state found');
+        throw new Error('No stored state found');
+      }
+
+      if (state !== storedState) {
+        console.error('❌ State mismatch:', { received: state, stored: storedState });
+        // Clear potentially corrupted state
+        localStorage.removeItem('spotify_auth_state');
+        localStorage.removeItem('spotify_code_verifier');
+        throw new Error('State mismatch');
+      }
+      
+      if (!codeVerifier) {
+        console.error('❌ Code verifier not found');
+        throw new Error('Code verifier not found');
+      }
+
       const response = await fetch('https://accounts.spotify.com/api/token', {
         method: 'POST',
         headers: {
@@ -132,6 +159,8 @@ class SpotifyService {
     } catch (error) {
       console.error('Error in Spotify auth callback:', error);
       return false;
+    } finally {
+      this.isProcessingAuth = false;
     }
   }
 
@@ -318,6 +347,7 @@ class SpotifyService {
     this.accessToken = null;
     this.refreshToken = null;
     this.tokenExpiry = null;
+    this.isProcessingAuth = false;
     this.clearTokensFromStorage();
     localStorage.removeItem('spotify_auth_state');
     localStorage.removeItem('spotify_code_verifier');
