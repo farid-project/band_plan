@@ -7,7 +7,7 @@ export default defineConfig({
     exclude: ['lucide-react'],
   },
   server: {
-    host: '192.168.4.57', // Listen on specific IP address
+    host: '127.0.0.1', // Try with IP instead of localhost
     port: 5173,
     strictPort: true,
   },

@@ -17,7 +17,7 @@ import { toast } from 'react-hot-toast';
 import Button from './Button';
 import Input from './Input';
 import { supabase } from '../lib/supabase';
-import { FaMusic, FaPlus, FaEdit, FaGripVertical, FaCopy } from 'react-icons/fa';
+import { FaMusic, FaPlus, FaEdit, FaGripVertical, FaCopy, FaSpotify } from 'react-icons/fa';
 import {
   DndContext,
   closestCenter,
@@ -37,6 +37,8 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import CreateMedleyModal from './CreateMedleyModal';
 import MedleyItem from './MedleyItem';
+import { useSpotify } from '../hooks/useSpotify';
+import { SpotifyTrack } from '../services/spotifyService';
 
 interface SetlistManagementProps {
   groupId: string;
@@ -150,6 +152,9 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
   const [addSongSearch, setAddSongSearch] = useState('');
 
   const [showCreateMedleyModal, setShowCreateMedleyModal] = useState(false);
+
+  // Spotify integration
+  const { isAuthenticated, createPlaylistFromSetlist, searchTracks } = useSpotify();
 
   const [editingMedleyId, setEditingMedleyId] = useState<string | null>(null);
   const [editingMedleyName, setEditingMedleyName] = useState('');
@@ -595,6 +600,65 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
     setShowDuplicateModal(true);
   };
 
+  const handleCreateSpotifyPlaylist = async (setlist: Setlist) => {
+    if (!isAuthenticated) {
+      toast.error('Debes conectar con Spotify primero');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Get all songs from the setlist
+      const allSongs = setlist.songs || [];
+      const spotifyTracks: SpotifyTrack[] = [];
+
+      // Search for each song on Spotify
+      for (const setlistSong of allSongs) {
+        if (setlistSong.song) {
+          const searchQuery = `${setlistSong.song.title} ${setlistSong.song.artist || ''}`.trim();
+          try {
+            const results = await searchTracks(searchQuery);
+            if (results.length > 0) {
+              // Take the first (most relevant) result
+              spotifyTracks.push(results[0]);
+            }
+          } catch (error) {
+            console.warn(`Could not find "${searchQuery}" on Spotify`);
+          }
+        }
+      }
+
+      if (spotifyTracks.length === 0) {
+        toast.error('No se encontraron canciones del setlist en Spotify');
+        return;
+      }
+
+      const playlistUrl = await createPlaylistFromSetlist(setlist.name, spotifyTracks);
+      
+      if (playlistUrl) {
+        toast.success(
+          <div>
+            <p>¡Playlist creada en Spotify!</p>
+            <p className="text-sm">Encontradas {spotifyTracks.length} de {allSongs.length} canciones</p>
+            <a 
+              href={playlistUrl} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-blue-600 underline"
+            >
+              Abrir en Spotify
+            </a>
+          </div>
+        );
+      }
+    } catch (error) {
+      console.error('Error creating Spotify playlist:', error);
+      toast.error('Error al crear playlist en Spotify');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const confirmDuplicate = async () => {
     if (!setlistToDuplicate || !duplicateSetlistName.trim()) return;
     
@@ -718,6 +782,15 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
                            <Button variant="primary" onClick={() => setShowCreateMedleyModal(true)}>
                                <FaPlus className="mr-1" /> Crear Medley
                            </Button>
+                           {isAuthenticated && (
+                             <Button 
+                               variant="secondary" 
+                               onClick={() => handleCreateSpotifyPlaylist(selectedSetlist)}
+                               className="bg-green-500 hover:bg-green-600 text-white"
+                             >
+                               <FaSpotify className="mr-2" /> Playlist Spotify
+                             </Button>
+                           )}
                             <Button variant="secondary" onClick={() => handleEdit(selectedSetlist)}>
                                 <FaEdit className="mr-2" /> Editar
                             </Button>

@@ -5,7 +5,11 @@ import { toast } from 'react-hot-toast';
 import Button from './Button';
 import Input from './Input';
 import { supabase } from '../lib/supabase';
-import { Search, Filter, X } from 'lucide-react';
+import { Search, Filter, X, Plus } from 'lucide-react';
+import SpotifyConnect from './SpotifyConnect';
+import UnifiedSongSearch from './UnifiedSongSearch';
+import { SpotifyTrack } from '../services/spotifyService';
+import { useSpotify } from '../hooks/useSpotify';
 
 interface SongManagementProps {
   groupId: string;
@@ -65,6 +69,9 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
   const [filterKey, setFilterKey] = useState('');
   const [filterType, setFilterType] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  
+  // Spotify integration
+  const { isAuthenticated } = useSpotify();
 
   const debouncedTitle = useDebounce(formData.title, 400);
 
@@ -129,6 +136,39 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
       setSongs(songsData);
     }
     setLoading(false);
+  };
+
+  const handleSpotifyTrackSelect = async (track: SpotifyTrack) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error('No se pudo obtener la información del usuario');
+      return;
+    }
+
+    const durationMinutes = Math.round(track.duration_ms / 60000);
+    const key = track.audio_features?.key !== undefined ? 
+      ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][track.audio_features.key] : '';
+    
+    const songData = {
+      title: track.name,
+      artist: track.artists.map(a => a.name).join(', '),
+      duration_minutes: durationMinutes.toString(),
+      key: key,
+      notes: `Popularidad: ${track.popularity}% | Álbum: ${track.album.name} (${track.album.release_date.split('-')[0]})`,
+      group_id: groupId,
+      created_by: user.id
+    };
+    
+    // Search interface will close automatically via the component
+    
+    try {
+      await createSong(songData);
+      await loadSongs();
+      toast.success(`"${track.name}" añadida desde Spotify`);
+    } catch (error) {
+      console.error('Error creating song from Spotify:', error);
+      toast.error('Error al añadir la canción');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -234,7 +274,7 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
 
   const handleCellEdit = (songId: string, field: string, value: string) => {
     setEditingCell({ songId, field });
-    setInlineValue(value || '');
+    setInlineValue(String(value || ''));
     setInlineError(null);
   };
 
@@ -270,17 +310,24 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      {/* Header with Spotify Connection */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <h2 className="text-2xl font-bold text-gray-900">Pool de Canciones</h2>
-        {canManageSongs && (
-          <Button
-            onClick={() => setShowForm(!showForm)}
-            variant={showForm ? 'secondary' : 'primary'}
-          >
-            {showForm ? 'Cancelar' : 'Añadir Canción'}
-          </Button>
-        )}
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+          <SpotifyConnect compact />
+        </div>
       </div>
+
+      {/* Unified Song Search */}
+      {canManageSongs && (
+        <div className="mb-6">
+          <UnifiedSongSearch
+            onSpotifyTrackSelect={handleSpotifyTrackSelect}
+            onManualAdd={() => setShowForm(true)}
+            className="w-full"
+          />
+        </div>
+      )}
 
       {!canManageSongs && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">

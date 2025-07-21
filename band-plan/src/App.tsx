@@ -3,6 +3,8 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { supabase } from './lib/supabase';
 import { useAuthStore } from './store/authStore';
+import { spotifyService } from './services/spotifyService';
+import { toast } from 'react-hot-toast';
 import Navbar from './components/Navbar';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -18,7 +20,7 @@ import ResetPassword from './ResetPassword';
 function App() {
   const { setUser, setSession } = useAuthStore();
 
-  // Efecto para detectar tokens de recuperación en la URL
+  // Efecto para detectar tokens de recuperación y autenticación de Spotify en la URL
   useEffect(() => {
     // Detectar si hay un token de recuperación en la URL, independientemente de la ruta
     const params = new URLSearchParams(window.location.search);
@@ -26,14 +28,35 @@ function App() {
     const type = params.get('type');
     const hash = window.location.hash;
     
-    console.log('App: Verificando token en URL:', { 
+    // Detectar autenticación de Spotify
+    const spotifyCode = params.get('code');
+    const spotifyState = params.get('state');
+    const spotifyError = params.get('error');
+    
+    console.log('App: Verificando parámetros en URL:', { 
       token: token ? token.substring(0, 10) + '...' : null, 
       type, 
-      hash: hash.length > 0 ? hash.substring(0, 20) + '...' : null 
+      hash: hash.length > 0 ? hash.substring(0, 20) + '...' : null,
+      spotifyCode: spotifyCode ? spotifyCode.substring(0, 10) + '...' : null,
+      spotifyState,
+      spotifyError
     });
     
+    // Manejar autenticación de Spotify
+    if (spotifyError) {
+      console.log('❌ Spotify auth error:', spotifyError);
+      toast.error(`Error de autenticación de Spotify: ${spotifyError}`);
+      // Limpiar URL
+      const url = new URL(window.location.href);
+      url.searchParams.delete('error');
+      window.history.replaceState({}, document.title, url.toString());
+    } else if (spotifyCode && spotifyState) {
+      console.log('✅ Procesando autenticación de Spotify...');
+      handleSpotifyAuth(spotifyCode, spotifyState);
+    }
+    
     // Verificar token PKCE en parámetros de consulta
-    if (token && type === 'recovery' && window.location.pathname !== '/reset-password') {
+    else if (token && type === 'recovery' && window.location.pathname !== '/reset-password') {
       console.log('App: Token PKCE de recuperación detectado, redirigiendo a /reset-password');
       // Redirigir a la página de reset manteniendo los parámetros
       window.location.replace(`/reset-password?token=${token}&type=${type}`);
@@ -44,6 +67,31 @@ function App() {
       window.location.replace('/reset-password' + hash);
     }
   }, []);
+
+  const handleSpotifyAuth = async (code: string, state: string) => {
+    try {
+      console.log('🎵 App: Iniciando autenticación de Spotify...');
+      const success = await spotifyService.handleAuthCallback(code, state);
+      
+      if (success) {
+        console.log('🎵 App: Autenticación exitosa');
+        const userData = await spotifyService.getCurrentUser();
+        toast.success(`¡Conectado a Spotify como ${userData.display_name}!`);
+      } else {
+        console.log('❌ App: Error en autenticación');
+        toast.error('Error al conectar con Spotify');
+      }
+    } catch (error) {
+      console.error('❌ App: Error en callback de Spotify:', error);
+      toast.error('Error al autenticar con Spotify');
+    } finally {
+      // Limpiar URL
+      const url = new URL(window.location.href);
+      url.searchParams.delete('code');
+      url.searchParams.delete('state');
+      window.history.replaceState({}, document.title, url.toString());
+    }
+  };
 
   useEffect(() => {
     console.log('App mounted');
