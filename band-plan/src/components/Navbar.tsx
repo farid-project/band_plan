@@ -2,7 +2,7 @@ import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { Music2, LogOut } from 'lucide-react';
-import NotificationBell from './NotificationBell';
+import { UnifiedNotificationCenter } from './UnifiedNotificationCenter';
 
 export default function Navbar() {
   const { user, signOut } = useAuthStore();
@@ -27,7 +27,7 @@ export default function Navbar() {
           </Link>
           
           <div className="flex items-center space-x-4">
-            {user && <NotificationBell />}
+            {user && <UnifiedNotificationCenter />}
             {user ? (
               <>
                 <span className="text-sm">{user.email}</span>

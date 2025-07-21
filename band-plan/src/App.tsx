@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { supabase } from './lib/supabase';
 import { useAuthStore } from './store/authStore';
 import { spotifyService } from './services/spotifyService';
+import { notificationService } from './services/notificationService';
 import { toast } from 'react-hot-toast';
 import Navbar from './components/Navbar';
 import Login from './pages/Login';
@@ -15,6 +16,8 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import AcceptInvitation from './pages/AcceptInvitation';
 import ForgotPassword from './ForgotPassword';
 import ResetPassword from './ResetPassword';
+import { OfflineIndicator } from './components/OfflineIndicator';
+import { LiveView } from './components/LiveView';
 
 
 function App() {
@@ -126,6 +129,11 @@ function App() {
       console.log('Initial session:', session);
       setSession(session);
       setUser(session?.user ?? null);
+      
+      // Initialize notification service if user is authenticated
+      if (session?.user) {
+        console.log('Initializing notification service for user:', session.user.id);
+      }
     });
 
     // Listen for auth changes
@@ -135,15 +143,26 @@ function App() {
       console.log('Auth state changed:', session);
       setSession(session);
       setUser(session?.user ?? null);
+      
+      // Manage notification service based on auth state
+      if (session?.user) {
+        console.log('Starting notification service for user:', session.user.id);
+      } else {
+        console.log('Stopping notification service - user signed out');
+        notificationService.stopReminderPolling();
+      }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      notificationService.stopReminderPolling();
+    };
   }, [setUser, setSession]);
 
   return (
     <Router>
       <div className="min-h-screen bg-gray-50">
-
+        <OfflineIndicator />
         <Navbar />
         <main className="container mx-auto px-4 py-8">
           <Routes>
@@ -170,6 +189,11 @@ function App() {
             <Route path="/group/:id/setlists" element={
               <ProtectedRoute>
                 <GroupManagement defaultTab="setlists" />
+              </ProtectedRoute>
+            } />
+            <Route path="/live/:eventId" element={
+              <ProtectedRoute>
+                <LiveView />
               </ProtectedRoute>
             } />
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />

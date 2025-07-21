@@ -8,6 +8,7 @@ import { useAuthStore } from '../store/authStore';
 import { toast } from 'react-hot-toast';
 import CreateGroupModal from '../components/CreateGroupModal';
 import DeleteGroupModal from '../components/DeleteGroupModal';
+import PWAInstallPrompt from '../components/PWAInstallPrompt';
 
 interface GroupWithRole extends Group {
   userRole: 'creator' | 'member' | 'none';
@@ -176,6 +177,11 @@ export default function Dashboard() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
+      {/* PWA Install Prompt */}
+      <div data-pwa-prompt className="mb-6">
+        <PWAInstallPrompt />
+      </div>
+
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-gray-900">Mis Grupos</h1>
         <Button

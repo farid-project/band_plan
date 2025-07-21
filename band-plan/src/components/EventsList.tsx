@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Event, GroupMember, Setlist } from '../types';
-import { Calendar, Clock, Trash2, Edit2, Users, MapPin, Music } from 'lucide-react';
+import { Calendar, Clock, Trash2, Edit2, Users, MapPin, Music, Eye } from 'lucide-react';
 import { format, parseISO, isFuture, startOfDay, isToday } from 'date-fns';
 import { toast } from 'react-hot-toast';
 import Button from './Button';
 import EventModal from './EventModal';
+import { useNavigate } from 'react-router-dom';
 import { safeSupabaseRequest } from '../lib/supabaseUtils';
 import { updateGroupCalendar } from '../utils/calendarSync';
 import SetlistPreviewModal from './SetlistPreviewModal';
@@ -35,6 +36,7 @@ export default function EventsList({
   availableDates,
   members,
 }: EventsListProps) {
+  const navigate = useNavigate();
   const [events, setEvents] = useState<EventWithMembers[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
@@ -348,6 +350,15 @@ export default function EventsList({
     return member.role?.name || 'Sin rol';
   };
 
+  const handleLiveView = (event: EventWithMembers) => {
+    if (!event.setlist) {
+      toast.error('Este evento no tiene un setlist asignado');
+      return;
+    }
+    
+    navigate(`/live/${event.id}`);
+  };
+
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-lg shadow-sm border border-gray-100">
@@ -484,24 +495,37 @@ export default function EventsList({
                                   </p>
                                 )}
                               </div>
-                              {canManageEvents && (
-                                <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-1">
+                                {/* Live View button - always visible if event has setlist */}
+                                {event.setlist && (
                                   <button
-                                    onClick={() => handleEdit(event)}
-                                    className="p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
-                                    title="Editar evento"
+                                    onClick={() => handleLiveView(event)}
+                                    className="p-1 text-green-500 hover:text-green-600 rounded-full hover:bg-green-50"
+                                    title="Vista en vivo - Modo concierto"
                                   >
-                                    <Edit2 className="w-4 h-4" />
+                                    <Eye className="w-4 h-4" />
                                   </button>
-                                  <button
-                                    onClick={() => handleDelete(event.id)}
-                                    className="p-1 text-red-400 hover:text-red-600 rounded-full hover:bg-red-50"
-                                    title="Eliminar evento"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              )}
+                                )}
+                                
+                                {canManageEvents && (
+                                  <>
+                                    <button
+                                      onClick={() => handleEdit(event)}
+                                      className="p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
+                                      title="Editar evento"
+                                    >
+                                      <Edit2 className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDelete(event.id)}
+                                      className="p-1 text-red-400 hover:text-red-600 rounded-full hover:bg-red-50"
+                                      title="Eliminar evento"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>
