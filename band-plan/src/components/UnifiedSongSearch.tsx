@@ -44,7 +44,7 @@ const UnifiedSongSearch: React.FC<UnifiedSongSearchProps> = ({
   useEffect(() => {
     if (!isAuthenticated || safeQuery.length < 2) {
       setTracks([]);
-      setShowResults(false);
+      // Don't hide results - manual add should always be available
       return;
     }
 
@@ -171,7 +171,7 @@ const UnifiedSongSearch: React.FC<UnifiedSongSearchProps> = ({
           onChange={(e) => setQuery(e.target.value || '')}
           placeholder={placeholder}
           className="w-full pl-12 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg shadow-sm"
-          onFocus={() => safeQuery.length >= 1 && setShowResults(true)}
+          onFocus={() => setShowResults(true)}
         />
         {loading && (
           <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5 animate-spin" />
