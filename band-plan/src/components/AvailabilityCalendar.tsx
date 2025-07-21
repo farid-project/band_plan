@@ -132,7 +132,6 @@ export default function AvailabilityCalendar({
   const [memberEvents, setMemberEvents] = useState<MemberEvent[]>([]);
   const [groupEvents, setGroupEvents] = useState<MemberEvent[]>([]);
   const [memberExternalEvents, setMemberExternalEvents] = useState<{ user_id: string; date: string; }[]>([]);
-  const [groupNotAvailableDates, setGroupNotAvailableDates] = useState<Date[]>([]);
   const { user } = useAuthStore();
 
 useEffect(() => {
@@ -145,203 +144,153 @@ useEffect(() => {
   }
 }, [user, groupId]);
 
-  // Memoizar el cálculo de disponibilidad del grupo con algoritmo optimizado por miembro
-  const { groupAvailableDatesCalculated, groupNotAvailableDatesCalculated } = useMemo(() => {
-    console.log('\n=== INICIO cálculo ULTRA-OPTIMIZADO de disponibilidad ===');
+  // ENFOQUE MINIMALISTA: Solo obtener fechas marcadas por cada miembro (sin cálculos complejos)
+  const memberDateMap = useMemo(() => {
+    console.log('🚀 SIMPLE: Calculando fechas por miembro...');
     
-    // Si no hay miembros en el grupo, no hay fechas disponibles
-    if (members.length === 0) {
-      console.log('No hay miembros en el grupo');
-      return {
-        groupAvailableDatesCalculated: [],
-        groupNotAvailableDatesCalculated: []
-      };
-    }
-
-    const principalMembers = members.filter(m => m.role_in_group === 'principal');
-    const substitutes = members.filter(m => m.role_in_group === 'sustituto');
+    const result = new Map<string, Set<string>>();
     
-    console.log(`Miembros principales: ${principalMembers.length}, Sustitutos: ${substitutes.length}`);
-    
-    // Si no hay miembros principales, no hay fechas disponibles
-    if (principalMembers.length === 0) {
-      console.log('No hay miembros principales en el grupo');
-      return {
-        groupAvailableDatesCalculated: [],
-        groupNotAvailableDatesCalculated: []
-      };
-    }
-    
-    // PRE-PROCESAMIENTO: Crear Maps optimizados
-    console.log('🚀 Pre-procesando datos una sola vez...');
-    
-    // Map de disponibilidades marcadas: userId -> Set de fechas
-    const availabilityMap = new Map<string, Set<string>>();
+    // Solo crear el mapa de fechas marcadas por cada miembro
     availabilities.forEach(member => {
       const dateSet = new Set<string>();
       member.dates.forEach(date => {
         dateSet.add(format(date, 'yyyy-MM-dd'));
       });
-      availabilityMap.set(member.userId, dateSet);
+      result.set(member.userId, dateSet);
+      console.log(`${member.memberName}: ${dateSet.size} fechas marcadas`);
     });
     
-    // Map de eventos del grupo: userId -> Set de fechas
-    const groupEventMap = new Map<string, Set<string>>();
+    console.log(`✅ Total miembros procesados: ${result.size}`);
+    return result;
+  }, [availabilities]);
+
+  // Crear mapas simples de eventos (solo para mostrar, sin cálculos complejos)
+  const eventMaps = useMemo(() => {
+    console.log('📅 SIMPLE: Procesando eventos...');
+    
+    const groupEvents = new Map<string, Set<string>>();
+    const externalEvents = new Map<string, Set<string>>();
+    
     memberEvents.forEach(event => {
-      if (!groupEventMap.has(event.user_id)) {
-        groupEventMap.set(event.user_id, new Set());
+      if (!groupEvents.has(event.user_id)) {
+        groupEvents.set(event.user_id, new Set());
       }
-      groupEventMap.get(event.user_id)!.add(format(new Date(event.date), 'yyyy-MM-dd'));
+      groupEvents.get(event.user_id)!.add(format(new Date(event.date), 'yyyy-MM-dd'));
     });
     
-    // Map de eventos externos: userId -> Set de fechas
-    const externalEventMap = new Map<string, Set<string>>();
     memberExternalEvents.forEach(event => {
-      if (!externalEventMap.has(event.user_id)) {
-        externalEventMap.set(event.user_id, new Set());
+      if (!externalEvents.has(event.user_id)) {
+        externalEvents.set(event.user_id, new Set());
       }
-      externalEventMap.get(event.user_id)!.add(format(new Date(event.date), 'yyyy-MM-dd'));
+      externalEvents.get(event.user_id)!.add(format(new Date(event.date), 'yyyy-MM-dd'));
     });
     
-    // Map de instrumentos: userId -> Set de instrumentos
-    const instrumentMap = new Map<string, Set<string>>();
-    [...principalMembers, ...substitutes].forEach(member => {
-      if (member.user_id) {
-        instrumentMap.set(member.user_id, new Set(member.instruments.map(i => i.id)));
-      }
+    console.log(`✅ Eventos procesados - Grupo: ${groupEvents.size} usuarios, Externos: ${externalEvents.size} usuarios`);
+    
+    return { groupEvents, externalEvents };
+  }, [memberEvents, memberExternalEvents]);
+
+  // Función simple para obtener miembros disponibles en una fecha específica (lazy calculation)
+  const getAvailableMembersForDate = useCallback((date: Date) => {
+    const dateStr = format(date, 'yyyy-MM-dd');
+    
+    return members.filter(member => {
+      if (!member.user_id) return false;
+      
+      // Verificar si el miembro marcó disponibilidad para esta fecha
+      const hasMarkedAvailability = memberDateMap.get(member.user_id)?.has(dateStr) ?? false;
+      
+      // Verificar si tiene eventos que lo bloqueen
+      const hasGroupEvent = eventMaps.groupEvents.get(member.user_id)?.has(dateStr) ?? false;
+      const hasExternalEvent = eventMaps.externalEvents.get(member.user_id)?.has(dateStr) ?? false;
+      
+      // Está disponible si marcó disponibilidad y no tiene eventos
+      return hasMarkedAvailability && !hasGroupEvent && !hasExternalEvent;
     });
+  }, [members, memberDateMap, eventMaps]);
+
+  // Función para verificar si todos los instrumentos están cubiertos en una fecha
+  const areAllInstrumentsCovered = useCallback((date: Date) => {
+    const availableMembers = getAvailableMembersForDate(date);
+    const principalMembers = members.filter(m => m.role_in_group === 'principal');
+    const availableSubstitutes = availableMembers.filter(m => m.role_in_group === 'sustituto');
     
-    // PASO 1: PRE-CALCULAR disponibilidad real POR MIEMBRO (una sola vez por miembro)
-    console.log('📅 Calculando disponibilidad real por miembro...');
-    
-    interface MemberAvailabilityInfo {
-      member: GroupMember;
-      reallyAvailableDates: Set<string>;
-      allMarkedDates: Set<string>;
-      blockedByGroupEvents: Set<string>;
-      blockedByExternalEvents: Set<string>;
-    }
-    
-    const calculateRealAvailabilityForMember = (member: GroupMember): MemberAvailabilityInfo => {
-      if (!member.user_id) {
-        return {
-          member,
-          reallyAvailableDates: new Set(),
-          allMarkedDates: new Set(),
-          blockedByGroupEvents: new Set(),
-          blockedByExternalEvents: new Set()
-        };
-      }
-      
-      const markedDates = availabilityMap.get(member.user_id) || new Set();
-      const groupEventDates = groupEventMap.get(member.user_id) || new Set();
-      const externalEventDates = externalEventMap.get(member.user_id) || new Set();
-      
-      // Fechas realmente disponibles = marcadas - eventos del grupo - eventos externos
-      const reallyAvailable = new Set<string>();
-      markedDates.forEach(date => {
-        if (!groupEventDates.has(date) && !externalEventDates.has(date)) {
-          reallyAvailable.add(date);
-        }
+    // Obtener todos los instrumentos que necesita la banda (de los principales)
+    const requiredInstruments = new Set<string>();
+    principalMembers.forEach(principal => {
+      principal.instruments.forEach(instrument => {
+        requiredInstruments.add(instrument.id);
       });
-      
-      console.log(`${member.name}: ${markedDates.size} marcadas, ${groupEventDates.size} eventos grupo, ${externalEventDates.size} eventos externos => ${reallyAvailable.size} realmente disponibles`);
-      
-      return {
-        member,
-        reallyAvailableDates: reallyAvailable,
-        allMarkedDates: markedDates,
-        blockedByGroupEvents: groupEventDates,
-        blockedByExternalEvents: externalEventDates
-      };
-    };
-    
-    // Calcular disponibilidad real para TODOS los miembros
-    const principalAvailability = principalMembers.map(calculateRealAvailabilityForMember);
-    const substituteAvailability = substitutes.map(calculateRealAvailabilityForMember);
-    
-    // PASO 2: Encontrar TODAS las fechas únicas mencionadas
-    const allPossibleDates = new Set<string>();
-    [...principalAvailability, ...substituteAvailability].forEach(memberInfo => {
-      memberInfo.allMarkedDates.forEach(date => allPossibleDates.add(date));
-      memberInfo.blockedByGroupEvents.forEach(date => allPossibleDates.add(date));
-      memberInfo.blockedByExternalEvents.forEach(date => allPossibleDates.add(date));
     });
     
-    console.log(`🎯 Total de fechas únicas a evaluar: ${allPossibleDates.size}`);
+    // Verificar que cada instrumento requerido esté cubierto
+    return Array.from(requiredInstruments).every(instrumentId => {
+      // Verificar si algún principal disponible toca este instrumento
+      const principalCovered = availableMembers.some(member => 
+        member.role_in_group === 'principal' && 
+        member.instruments.some(instrument => instrument.id === instrumentId)
+      );
+      
+      // Si no hay principal disponible, verificar si algún sustituto puede cubrirlo
+      if (!principalCovered) {
+        const substituteCovered = availableSubstitutes.some(substitute => 
+          substitute.instruments.some(instrument => instrument.id === instrumentId)
+        );
+        return substituteCovered;
+      }
+      
+      return true;
+    });
+  }, [members, getAvailableMembersForDate]);
+
+  // Calcular fechas disponibles para el callback (solo si se necesita)
+  const groupAvailableDatesCalculated = useMemo(() => {
+    if (!onAvailableDatesChange) return []; // No calcular si no se necesita
     
-    // PASO 3: Evaluar disponibilidad del grupo (UNA SOLA VEZ por fecha, no por miembro)
+    console.log('🎯 SIMPLE: Calculando fechas disponibles del grupo (con sustitutos)...');
+    
+    const allDates = new Set<string>();
+    memberDateMap.forEach(dates => {
+      dates.forEach(date => allDates.add(date));
+    });
+    
+    const principalMembers = members.filter(m => m.role_in_group === 'principal');
+    if (principalMembers.length === 0) return [];
+    
     const availableDates: Date[] = [];
-    const notAvailableDates: Date[] = [];
     
-    Array.from(allPossibleDates).forEach(dateStr => {
-      console.log(`\n📅 Evaluando fecha: ${dateStr}`);
+    allDates.forEach(dateStr => {
+      const date = new Date(dateStr);
       
-      // Principales disponibles en esta fecha
-      const availablePrincipals = principalAvailability.filter(pInfo => 
-        pInfo.reallyAvailableDates.has(dateStr)
-      );
-      
-      // Principales NO disponibles en esta fecha
-      const unavailablePrincipals = principalAvailability.filter(pInfo => 
-        !pInfo.reallyAvailableDates.has(dateStr)
-      );
-      
-      console.log(`   Principales disponibles: ${availablePrincipals.length}/${principalMembers.length}`);
-      
-      if (unavailablePrincipals.length === 0) {
-        // Todos los principales disponibles
-        console.log(`   ✅ DISPONIBLE: Todos los principales disponibles`);
-        availableDates.push(new Date(dateStr));
+      // Verificar si todos los instrumentos están cubiertos (principales + sustitutos)
+      if (areAllInstrumentsCovered(date)) {
+        availableDates.push(date);
+        
+        const availableMembers = getAvailableMembersForDate(date);
+        const availablePrincipals = availableMembers.filter(m => m.role_in_group === 'principal');
+        const availableSubstitutes = availableMembers.filter(m => m.role_in_group === 'sustituto');
+        
+        console.log(`📅 ${dateStr}: ✅ Disponible - Principales: ${availablePrincipals.length}/${principalMembers.length}, Sustitutos: ${availableSubstitutes.length}`);
       } else {
-        // Verificar si los principales faltantes pueden ser sustituidos
-        console.log(`   🔄 Verificando sustitutos para ${unavailablePrincipals.length} principales faltantes...`);
+        const availableMembers = getAvailableMembersForDate(date);
+        const availablePrincipals = availableMembers.filter(m => m.role_in_group === 'principal');
+        const availableSubstitutes = availableMembers.filter(m => m.role_in_group === 'sustituto');
         
-        const canBeFullySubstituted = unavailablePrincipals.every(principalInfo => {
-          const requiredInstruments = instrumentMap.get(principalInfo.member.user_id!) || new Set();
-          
-          // Sustitutos disponibles en esta fecha
-          const availableSubsForDate = substituteAvailability.filter(subInfo => 
-            subInfo.reallyAvailableDates.has(dateStr)
-          );
-          
-          // ¿Algún sustituto disponible puede cubrir todos los instrumentos requeridos?
-          const canBeCovered = availableSubsForDate.some(subInfo => {
-            const subInstruments = instrumentMap.get(subInfo.member.user_id!) || new Set();
-            return Array.from(requiredInstruments).every(instrId => subInstruments.has(instrId));
-          });
-          
-          console.log(`     ${principalInfo.member.name} puede ser sustituido: ${canBeCovered}`);
-          return canBeCovered;
-        });
-        
-        if (canBeFullySubstituted) {
-          console.log(`   ✅ DISPONIBLE: Con sustitutos`);
-          availableDates.push(new Date(dateStr));
-        } else {
-          console.log(`   ❌ NO DISPONIBLE: No se pueden cubrir todos los principales faltantes`);
-          notAvailableDates.push(new Date(dateStr));
-        }
+        console.log(`📅 ${dateStr}: ❌ NO disponible - Principales: ${availablePrincipals.length}/${principalMembers.length}, Sustitutos: ${availableSubstitutes.length} (instrumentos no cubiertos)`);
       }
     });
-
-    console.log('\n=== RESUMEN ULTRA-OPTIMIZADO ===');
-    console.log(`📊 Fechas evaluadas: ${allPossibleDates.size}`);
-    console.log(`✅ Fechas disponibles: ${availableDates.length}`);
-    console.log(`❌ Fechas NO disponibles: ${notAvailableDates.length}`);
-    console.log(`🎯 Logs por fecha reducidos de ~${allPossibleDates.size * (principalMembers.length + substitutes.length)} a ${allPossibleDates.size}`);
     
-    return {
-      groupAvailableDatesCalculated: availableDates,
-      groupNotAvailableDatesCalculated: notAvailableDates
-    };
-  }, [members, availabilities, memberEvents, memberExternalEvents]);
+    console.log(`✅ SIMPLE: ${availableDates.length} fechas disponibles para el grupo (considerando sustitutos)`);
+    return availableDates;
+  }, [members, memberDateMap, getAvailableMembersForDate, onAvailableDatesChange, areAllInstrumentsCovered]);
 
-  // Actualizar el estado cuando cambie el cálculo memoizado
+  // Actualizar el estado para el callback
   useEffect(() => {
-    setGroupAvailableDates(groupAvailableDatesCalculated);
-    setGroupNotAvailableDates(groupNotAvailableDatesCalculated);
-  }, [groupAvailableDatesCalculated, groupNotAvailableDatesCalculated]);
+    if (onAvailableDatesChange && groupAvailableDatesCalculated.length >= 0) {
+      setGroupAvailableDates(groupAvailableDatesCalculated);
+      onAvailableDatesChange(groupAvailableDatesCalculated);
+    }
+  }, [groupAvailableDatesCalculated, onAvailableDatesChange]);
 
   useEffect(() => {
     if (onAvailableDatesChange) {
@@ -752,58 +701,53 @@ useEffect(() => {
 
     // Eliminamos la función no utilizada para evitar warnings
 
+  // Función simple para obtener miembros para un día (usa lazy calculation)
   function getMembersForDay(date: Date) {
-    return members.filter(member => {
-      const isAvailable = availabilities
-        .find(a => a.userId === member.user_id)
-        ?.dates.some(d => isSameDay(d, date)) ?? false;
-
-      // Verificamos si hay eventos externos (no se usa actualmente pero podría ser útil)
-      // const memberHasExternalEvent = memberExternalEvents.some(event => 
-      //   event.user_id === member.user_id && 
-      //   isSameDay(new Date(event.date), date)
-      // );
-
-      const hasGroupEvent = groupEvents.some(event => 
-        event.user_id === member.user_id && 
-        isSameDay(new Date(event.date), date)
-      );
-
-      return isAvailable || hasGroupEvent;
+    const availableMembers = getAvailableMembersForDate(date);
+    const dateStr = format(date, 'yyyy-MM-dd');
+    
+    // También incluir miembros que tienen eventos del grupo (aunque no estén "disponibles")
+    const membersWithGroupEvents = members.filter(member => 
+      member.user_id && eventMaps.groupEvents.get(member.user_id)?.has(dateStr)
+    );
+    
+    // Combinar ambos grupos sin duplicados
+    const allMembers = [...availableMembers];
+    membersWithGroupEvents.forEach(member => {
+      if (!allMembers.find(m => m.id === member.id)) {
+        allMembers.push(member);
+      }
     });
+    
+    return allMembers;
   }
 
   const DayContent = (props: { date: Date }) => {
     const { date } = props;
+    const dateStr = format(date, 'yyyy-MM-dd');
     const membersForDay = getMembersForDay(date);
+    const availableMembers = getAvailableMembersForDate(date);
     
     // Check if current user is involved
-    const isCurrentUserInvolved = membersForDay.some(
-      m => m.user_id === (selectedMemberId || user?.id)
-    );
+    const currentUserId = selectedMemberId || user?.id;
+    const isCurrentUserInvolved = membersForDay.some(m => m.user_id === currentUserId);
     
-    // Check if current user has external events
-    const currentUserHasExternalEvent = isCurrentUserInvolved && memberExternalEvents.some(event => 
-      event.user_id === (selectedMemberId || user?.id) && 
-      isSameDay(new Date(event.date), date)
-    );
+    // Check if current user has external events (simple lookup)
+    const currentUserHasExternalEvent = currentUserId && 
+      eventMaps.externalEvents.get(currentUserId)?.has(dateStr) || false;
     
     // Get other members (not the current user)
-    const otherMembers = membersForDay.filter(
-      m => m.user_id !== (selectedMemberId || user?.id)
-    );
+    const otherMembers = membersForDay.filter(m => m.user_id !== currentUserId);
     const otherMembersCount = otherMembers.length;
     
-    // Count how many other members have external events
+    // Count other members with external events (simple lookups)
     const otherMembersWithExternalEvents = otherMembers.filter(member => 
-      memberExternalEvents.some(event => 
-        event.user_id === member.user_id && 
-        isSameDay(new Date(event.date), date)
-      )
+      member.user_id && eventMaps.externalEvents.get(member.user_id)?.has(dateStr)
     ).length;
     
-    const isGroupAvailable = groupAvailableDates.some(d => isSameDay(d, date));
-    const isGroupNotAvailable = groupNotAvailableDates.some(d => isSameDay(d, date));
+    // Verificar disponibilidad del grupo considerando sustitutos
+    const isGroupAvailable = areAllInstrumentsCovered(date);
+    
     const events = getEventsForDate(date);
     const hasEvent = events.length > 0;
     
@@ -813,8 +757,8 @@ useEffect(() => {
     return (
       <div
         className={`day-content ${isGroupAvailable ? 'group-available' : ''} ${
-          isGroupNotAvailable ? 'group-not-available' : ''
-        } ${hasEvent ? 'has-event' : ''} ${
+          hasEvent ? 'has-event' : ''
+        } ${
           hasMembersWithExternalEvents ? 'has-external-events' : ''
         } ${selectedDay && isSameDay(date, selectedDay) ? 'selected-day' : ''}`}
       >
@@ -860,14 +804,9 @@ useEffect(() => {
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-gray-700">Miembros:</p>
                   {membersForDay.map((member) => {
-                    const isAvailable = availabilities
-                      .find(a => a.userId === member.user_id)
-                      ?.dates.some(d => isSameDay(d, date)) ?? false;
-
-                    const memberHasExternalEvent = memberExternalEvents.some(event => 
-                      event.user_id === member.user_id && 
-                      isSameDay(new Date(event.date), date)
-                    );
+                    const isAvailable = availableMembers.some(m => m.id === member.id);
+                    const memberHasExternalEvent = member.user_id && 
+                      eventMaps.externalEvents.get(member.user_id)?.has(dateStr) || false;
                     
                     // La información de eventos externos ya se muestra en el tooltip general
 
@@ -932,8 +871,8 @@ useEffect(() => {
   };
 
   const downloadAvailabilityDates = () => {
-    // Filtrar fechas disponibles sin eventos
-    const availableDatesWithoutEvents = groupAvailableDates
+    // Usar el cálculo simple para obtener fechas disponibles
+    const availableDatesWithoutEvents = groupAvailableDatesCalculated
       .filter(date => getEventsForDate(date).length === 0)
       .sort((a, b) => a.getTime() - b.getTime());
 
