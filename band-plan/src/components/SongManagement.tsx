@@ -8,7 +8,8 @@ import { supabase } from '../lib/supabase';
 import { Search, Filter, X, Plus } from 'lucide-react';
 import SpotifyConnect from './SpotifyConnect';
 import UnifiedSongSearch from './UnifiedSongSearch';
-import { SpotifyTrack } from '../services/spotifyService';
+import { SpotifyTrack, spotifyService } from '../services/spotifyService';
+import { musicDataService } from '../services/musicDataService';
 import { useSpotify } from '../hooks/useSpotify';
 
 interface DeezerTrack {
@@ -118,16 +119,92 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
       return;
     }
 
+    // Try to get detailed audio features from Spotify
+    let audioFeatures = track.audio_features;
+    
+    if (!audioFeatures) {
+      try {
+        audioFeatures = await spotifyService.getAudioFeatures(track.id);
+      } catch (audioError) {
+        console.warn(`No se pudieron obtener audio features de Spotify para "${track.name}":`, audioError);
+        // Continue without audio features - don't create fake data
+      }
+    }
+
     const durationMinutes = Math.round(track.duration_ms / 60000);
-    const key = track.audio_features?.key !== undefined ? 
-      ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][track.audio_features.key] : '';
+    
+    // Use Spotify audio features if available, otherwise try MusicBrainz/LastFM + local estimation
+    let key = '';
+    let bpm = null;
+    let energy = null;
+    let valence = null;
+    let musicData = null;
+    
+    if (audioFeatures?.key !== undefined) {
+      // Prefer real Spotify data
+      key = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][audioFeatures.key];
+      bpm = audioFeatures.tempo;
+      energy = audioFeatures.energy;
+      valence = audioFeatures.valence;
+      console.log(`✅ Using Spotify audio features for "${track.name}"`);
+    } else {
+      // Fallback to MusicBrainz/AcousticBrainz + LastFM + local estimation
+      try {
+        musicData = await musicDataService.enrichTrackData(
+          track.artists.map(a => a.name).join(', '),
+          track.name
+        );
+        
+        if (musicData.key) key = musicData.key;
+        if (musicData.bpm) bpm = musicData.bpm;
+        if (musicData.energy) energy = musicData.energy;
+        if (musicData.valence) valence = musicData.valence;
+        
+        const sourceText = musicData.source === 'audiodb' ? 'AudioDB' :
+                          musicData.source === 'itunes' ? 'iTunes' :
+                          musicData.source === 'deezer' ? 'Deezer' :
+                          musicData.source === 'musicbrainz' ? 'MusicBrainz' :
+                          musicData.source === 'genius' ? 'Genius' :
+                          musicData.source === 'getsongbpm' ? 'GetSongBPM' :
+                          musicData.source === 'getsongkey' ? 'GetSongKey' :
+                          musicData.source === 'combined' ? 'Multiple Sources' :
+                          musicData.source === 'acousticbrainz' ? 'AcousticBrainz' : 
+                          musicData.source === 'lastfm' ? 'LastFM' : 'Estimation';
+        console.log(`🔄 Using ${sourceText} data for "${track.name}":`, musicData);
+      } catch (estimationError) {
+        console.warn(`Could not get enhanced music data for "${track.name}":`, estimationError);
+      }
+    }
+    
+    // Build comprehensive notes with available data
+    let notes = `Popularidad: ${track.popularity}% | Álbum: ${track.album.name} (${track.album.release_date.split('-')[0]})`;
+    if (bpm) {
+      const source = audioFeatures?.tempo ? 'Spotify' : 
+                    (musicData?.source === 'audiodb' ? 'AudioDB' :
+                     musicData?.source === 'itunes' ? 'iTunes' :
+                     musicData?.source === 'deezer' ? 'Deezer' :
+                     musicData?.source === 'musicbrainz' ? 'MusicBrainz' :
+                     musicData?.source === 'genius' ? 'Genius' :
+                     musicData?.source === 'getsongbpm' ? 'GetSongBPM' :
+                     musicData?.source === 'getsongkey' ? 'GetSongKey' :
+                     musicData?.source === 'combined' ? 'Multiple Sources' :
+                     musicData?.source === 'acousticbrainz' ? 'AcousticBrainz' : 
+                     musicData?.source === 'lastfm' ? 'LastFM' : 'Estimado');
+      notes += ` | Tempo: ${Math.round(bpm)} BPM (${source})`;
+    }
+    if (energy !== null) {
+      notes += ` | Energía: ${Math.round(energy * 100)}%`;
+    }
+    if (valence !== null) {
+      notes += ` | Valencia: ${Math.round(valence * 100)}%`;
+    }
     
     const songData = {
       title: track.name,
       artist: track.artists.map(a => a.name).join(', '),
       duration_minutes: durationMinutes.toString(),
       key: key,
-      notes: `Popularidad: ${track.popularity}% | Álbum: ${track.album.name} (${track.album.release_date.split('-')[0]})`,
+      notes: notes,
       group_id: groupId,
       created_by: user.id
     };
@@ -135,7 +212,8 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
     try {
       await createSong(songData);
       await loadSongs();
-      toast.success(`"${track.name}" añadida desde Spotify`);
+      const bpmText = bpm ? ` (${Math.round(bpm)} BPM${key ? `, ${key}` : ''})` : (key ? ` (${key})` : '');
+      toast.success(`"${track.name}"${bpmText} añadida desde Spotify`);
     } catch (error) {
       console.error('Error creating song from Spotify:', error);
       toast.error('Error al añadir la canción');
@@ -151,12 +229,64 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
 
     const durationMinutes = Math.round(track.duration / 60);
     
+    // Try to get enhanced data from MusicBrainz/AcousticBrainz + LastFM for Deezer tracks
+    let key = '';
+    let bpm = null;
+    let energy = null;
+    let valence = null;
+    let musicData = null;
+    
+    try {
+      musicData = await musicDataService.enrichTrackData(track.artist.name, track.title);
+      
+      if (musicData.key) key = musicData.key;
+      if (musicData.bpm) bpm = musicData.bpm;
+      if (musicData.energy) energy = musicData.energy;
+      if (musicData.valence) valence = musicData.valence;
+      
+      const sourceText = musicData.source === 'audiodb' ? 'AudioDB' :
+                        musicData.source === 'itunes' ? 'iTunes' :
+                        musicData.source === 'deezer' ? 'Deezer API' :
+                        musicData.source === 'musicbrainz' ? 'MusicBrainz' :
+                        musicData.source === 'genius' ? 'Genius' :
+                        musicData.source === 'getsongbpm' ? 'GetSongBPM' :
+                        musicData.source === 'getsongkey' ? 'GetSongKey' :
+                        musicData.source === 'combined' ? 'Multiple Sources' :
+                        musicData.source === 'acousticbrainz' ? 'AcousticBrainz' : 
+                        musicData.source === 'lastfm' ? 'LastFM' : 'Estimado';
+      console.log(`🔄 Enhanced Deezer track "${track.title}" with ${sourceText}:`, musicData);
+    } catch (error) {
+      console.warn(`Could not enhance Deezer track "${track.title}":`, error);
+    }
+
+    // Build comprehensive notes with source information
+    let notes = `Álbum: ${track.album.title} | Fuente: Deezer`;
+    if (bpm) {
+      const source = musicData?.source === 'audiodb' ? 'AudioDB' :
+                    musicData?.source === 'itunes' ? 'iTunes' :
+                    musicData?.source === 'deezer' ? 'Deezer API' :
+                    musicData?.source === 'musicbrainz' ? 'MusicBrainz' :
+                    musicData?.source === 'genius' ? 'Genius' :
+                    musicData?.source === 'getsongbpm' ? 'GetSongBPM' :
+                    musicData?.source === 'getsongkey' ? 'GetSongKey' :
+                    musicData?.source === 'combined' ? 'Multiple Sources' :
+                    musicData?.source === 'acousticbrainz' ? 'AcousticBrainz' : 
+                    musicData?.source === 'lastfm' ? 'LastFM' : 'Estimado';
+      notes += ` | Tempo: ${Math.round(bpm)} BPM (${source})`;
+    }
+    if (energy !== null) {
+      notes += ` | Energía: ${Math.round(energy * 100)}%`;
+    }
+    if (valence !== null) {
+      notes += ` | Valencia: ${Math.round(valence * 100)}%`;
+    }
+    
     const songData = {
       title: track.title,
       artist: track.artist.name,
       duration_minutes: durationMinutes.toString(),
-      key: '',
-      notes: `Álbum: ${track.album.title} | Fuente: Deezer`,
+      key: key,
+      notes: notes,
       group_id: groupId,
       created_by: user.id
     };
@@ -164,7 +294,8 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
     try {
       await createSong(songData);
       await loadSongs();
-      toast.success(`"${track.title}" añadida desde Deezer`);
+      const bpmText = bpm ? ` (${Math.round(bpm)} BPM${key ? `, ${key}` : ''})` : (key ? ` (${key})` : '');
+      toast.success(`"${track.title}"${bpmText} añadida desde Deezer`);
     } catch (error) {
       console.error('Error creating song from Deezer:', error);
       toast.error('Error al añadir la canción');
@@ -260,6 +391,12 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
     return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+  };
+
+  const extractBPMFromNotes = (notes: string | null | undefined): string => {
+    if (!notes) return '-';
+    const bpmMatch = notes.match(/Tempo:\s*(\d+)\s*BPM/i);
+    return bpmMatch ? `${bpmMatch[1]}` : '-';
   };
 
 
@@ -479,6 +616,9 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
                     Tonalidad
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    BPM
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Acciones
                   </th>
                 </tr>
@@ -578,6 +718,15 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
                           {song.key || <span className="text-gray-400">Sin especificar</span>}
                         </div>
                       )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap align-top text-sm text-gray-900">
+                      <div className="cursor-default">
+                        {extractBPMFromNotes(song.notes) === '-' ? (
+                          <span className="text-gray-400">-</span>
+                        ) : (
+                          <span className="font-medium">{extractBPMFromNotes(song.notes)}</span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                       {canManageSongs && (

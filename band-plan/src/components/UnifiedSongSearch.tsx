@@ -90,6 +90,8 @@ const UnifiedSongSearch: React.FC<UnifiedSongSearchProps> = ({
       // Search Spotify when authenticated
       try {
         const results = await searchTracks(searchQuery);
+        
+        // Just use the results as they come from Spotify
         setTracks(results);
         setShowResults(true);
       } catch (error) {
@@ -221,6 +223,7 @@ const UnifiedSongSearch: React.FC<UnifiedSongSearchProps> = ({
     window.open(track.link, '_blank');
     toast.success('Abriendo en Deezer');
   };
+
 
   if (spotifyLoading) {
     return (

@@ -45,6 +45,8 @@ class SpotifyService {
   private scopes = [
     'user-read-private',
     'user-read-email',
+    'playlist-read-private',
+    'playlist-read-collaborative',
     'playlist-modify-public',
     'playlist-modify-private',
     'user-modify-playback-state',
@@ -295,6 +297,16 @@ class SpotifyService {
       // No active device is not an error
       return null;
     }
+  }
+
+  async getUserPlaylists(limit: number = 50): Promise<SpotifyPlaylist[]> {
+    const response = await this.apiRequest<{ items: SpotifyPlaylist[] }>(`/me/playlists?limit=${limit}`);
+    return response.items;
+  }
+
+  async getPlaylistTracks(playlistId: string, limit: number = 100): Promise<SpotifyTrack[]> {
+    const response = await this.apiRequest<{ items: { track: SpotifyTrack }[] }>(`/playlists/${playlistId}/tracks?limit=${limit}`);
+    return response.items.map(item => item.track);
   }
 
   // Utility methods

@@ -15,6 +15,7 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import AcceptInvitation from './pages/AcceptInvitation';
 import ForgotPassword from './ForgotPassword';
 import ResetPassword from './ResetPassword';
+import BacklinkFooter from './components/BacklinkFooter';
 
 
 function App() {
@@ -173,6 +174,7 @@ function App() {
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />
           </Routes>
         </main>
+        <BacklinkFooter />
         <Toaster position="top-right" />
       </div>
     </Router>

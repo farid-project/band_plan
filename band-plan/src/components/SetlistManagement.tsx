@@ -37,6 +37,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import CreateMedleyModal from './CreateMedleyModal';
 import MedleyItem from './MedleyItem';
+import ImportPlaylistModal from './ImportPlaylistModal';
 import { useSpotify } from '../hooks/useSpotify';
 import { SpotifyTrack } from '../services/spotifyService';
 
@@ -152,6 +153,7 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
   const [addSongSearch, setAddSongSearch] = useState('');
 
   const [showCreateMedleyModal, setShowCreateMedleyModal] = useState(false);
+  const [showImportPlaylistModal, setShowImportPlaylistModal] = useState(false);
 
   // Spotify integration
   const { isAuthenticated, createPlaylistFromSetlist, searchTracks } = useSpotify();
@@ -683,17 +685,36 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
     return <div className="text-center py-8">Cargando setlists...</div>;
   }
 
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Setlists</h2>
         {canManageSetlists && (
-          <Button
-            onClick={() => setShowForm(!showForm)}
-            variant={showForm ? 'secondary' : 'primary'}
-          >
-            {showForm ? 'Cancelar' : 'Crear Setlist'}
-          </Button>
+          <div className="flex gap-3">
+            <Button
+              onClick={() => setShowForm(!showForm)}
+              variant={showForm ? 'secondary' : 'primary'}
+            >
+              {showForm ? 'Cancelar' : 'Crear Setlist'}
+            </Button>
+            <Button
+              onClick={() => setShowImportPlaylistModal(true)}
+              variant="secondary"
+              className={`${
+                isAuthenticated 
+                  ? 'bg-green-500 hover:bg-green-600 text-white' 
+                  : 'bg-gray-400 hover:bg-gray-500 text-white'
+              }`}
+              title={!isAuthenticated ? 'Conecta con Spotify para importar playlists' : 'Importar playlist desde Spotify'}
+            >
+              <FaSpotify className="mr-2" />
+              Importar de Spotify
+              {!isAuthenticated && (
+                <span className="ml-2 text-xs opacity-75">(Conectar)</span>
+              )}
+            </Button>
+          </div>
         )}
       </div>
 
@@ -965,6 +986,18 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
           onMedleyCreated={(newMedley) => {
             handleMedleyCreated(newMedley);
             setShowCreateMedleyModal(false);
+          }}
+        />
+      )}
+
+      {showImportPlaylistModal && (
+        <ImportPlaylistModal
+          isOpen={showImportPlaylistModal}
+          onClose={() => setShowImportPlaylistModal(false)}
+          groupId={groupId}
+          onSetlistCreated={() => {
+            loadData();
+            setShowImportPlaylistModal(false);
           }}
         />
       )}
