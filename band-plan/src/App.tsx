@@ -39,7 +39,9 @@ function App() {
       hash: hash.length > 0 ? hash.substring(0, 20) + '...' : null,
       spotifyCode: spotifyCode ? spotifyCode.substring(0, 10) + '...' : null,
       spotifyState,
-      spotifyError
+      spotifyError,
+      fullURL: window.location.href,
+      searchParams: window.location.search
     });
     
     // Manejar autenticación de Spotify
@@ -52,7 +54,11 @@ function App() {
       window.history.replaceState({}, document.title, url.toString());
     } else if (spotifyCode && spotifyState) {
       console.log('✅ Procesando autenticación de Spotify...');
+      console.log('🎵 Spotify Code:', spotifyCode.substring(0, 10) + '...');
+      console.log('🎵 Spotify State:', spotifyState);
       handleSpotifyAuth(spotifyCode, spotifyState);
+    } else if (spotifyCode || spotifyState) {
+      console.log('⚠️ Spotify params parciales:', { spotifyCode: !!spotifyCode, spotifyState: !!spotifyState });
     }
     
     // Verificar token PKCE en parámetros de consulta
@@ -77,6 +83,24 @@ function App() {
         console.log('🎵 App: Autenticación exitosa');
         const userData = await spotifyService.getCurrentUser();
         toast.success(`¡Conectado a Spotify como ${userData.display_name}!`);
+        
+        // Redirect back to the original page
+        const returnUrl = localStorage.getItem('spotify_return_url');
+        console.log('🎵 Return URL saved:', returnUrl);
+        console.log('🎵 Current URL:', window.location.href);
+        
+        if (returnUrl) {
+          const returnUrlObj = new URL(returnUrl);
+          const currentUrlObj = new URL(window.location.href);
+          
+          // Compare without query parameters
+          if (returnUrlObj.pathname !== currentUrlObj.pathname) {
+            console.log('🎵 Redirecting back to:', returnUrl);
+            localStorage.removeItem('spotify_return_url');
+            window.location.href = returnUrl;
+            return;
+          }
+        }
       } else {
         console.log('❌ App: Error en autenticación');
         toast.error('Error al conectar con Spotify');
@@ -134,6 +158,16 @@ function App() {
             <Route path="/group/:id" element={
               <ProtectedRoute>
                 <GroupManagement />
+              </ProtectedRoute>
+            } />
+            <Route path="/group/:id/songs" element={
+              <ProtectedRoute>
+                <GroupManagement defaultTab="songs" />
+              </ProtectedRoute>
+            } />
+            <Route path="/group/:id/setlists" element={
+              <ProtectedRoute>
+                <GroupManagement defaultTab="setlists" />
               </ProtectedRoute>
             } />
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />

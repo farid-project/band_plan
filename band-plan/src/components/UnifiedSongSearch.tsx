@@ -17,7 +17,7 @@ const UnifiedSongSearch: React.FC<UnifiedSongSearchProps> = ({
   placeholder = 'Buscar en Spotify o añadir manualmente...',
   className = '',
 }) => {
-  const { isAuthenticated, searchTracks, playTrack, loading: spotifyLoading } = useSpotify();
+  const { isAuthenticated, searchTracks, loading: spotifyLoading } = useSpotify();
   const [query, setQuery] = useState<string>('');
   const [tracks, setTracks] = useState<SpotifyTrack[]>([]);
   const [loading, setLoading] = useState(false);
@@ -131,13 +131,10 @@ const UnifiedSongSearch: React.FC<UnifiedSongSearchProps> = ({
     setPlayingPreview(null);
   };
 
-  const playOnSpotify = async (track: SpotifyTrack) => {
-    try {
-      await playTrack(`spotify:track:${track.id}`);
-      toast.success('Reproduciendo en Spotify');
-    } catch (error) {
-      // Error is already handled in the hook
-    }
+  const openInSpotify = (track: SpotifyTrack) => {
+    // Open Spotify app/web with the track
+    window.open(track.external_urls.spotify, '_blank');
+    toast.success('Abriendo en Spotify');
   };
 
   const formatDuration = (durationMs: number): string => {
@@ -266,14 +263,14 @@ const UnifiedSongSearch: React.FC<UnifiedSongSearchProps> = ({
                         </button>
                       )}
 
-                      {/* Play on Spotify button */}
+                      {/* Open in Spotify button */}
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          playOnSpotify(track);
+                          openInSpotify(track);
                         }}
                         className="p-1.5 text-gray-400 hover:text-green-500 transition-colors"
-                        title="Reproducir en Spotify"
+                        title="Abrir en Spotify"
                       >
                         <ExternalLink className="w-4 h-4" />
                       </button>

@@ -66,6 +66,8 @@ class SpotifyService {
     const state = this.generateRandomString(16);
     const codeVerifier = this.generateRandomString(128);
 
+    // Save current page to return after auth
+    localStorage.setItem('spotify_return_url', window.location.href);
     localStorage.setItem('spotify_auth_state', state);
     localStorage.setItem('spotify_code_verifier', codeVerifier);
 
@@ -203,6 +205,12 @@ class SpotifyService {
         }
       }
       throw new Error(`Spotify API error: ${response.status} ${response.statusText}`);
+    }
+
+    // Some Spotify endpoints return empty responses (like player controls)
+    const contentLength = response.headers.get('content-length');
+    if (contentLength === '0' || response.status === 204) {
+      return null as T;
     }
 
     return response.json();

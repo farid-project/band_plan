@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Group, GroupMember, Instrument } from '../types';
 import Button from '../components/Button';
@@ -23,8 +23,14 @@ interface ExtendedGroupMember extends GroupMember {
   }[];
 }
 
-export default function GroupManagement() {
+interface GroupManagementProps {
+  defaultTab?: 'overview' | 'songs' | 'setlists' | 'analytics';
+}
+
+export default function GroupManagement({ defaultTab }: GroupManagementProps) {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [group, setGroup] = useState<Group | null>(null);
   const [members, setMembers] = useState<ExtendedGroupMember[]>([]);
   const [instruments, setInstruments] = useState<Instrument[]>([]);
@@ -42,7 +48,49 @@ export default function GroupManagement() {
   const [isUserMember, setIsUserMember] = useState(false);
   const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
   const [calendarUrl, setCalendarUrl] = useState('');
-  const [activeTab, setActiveTab] = useState<'overview' | 'setlists' | 'analytics'>('overview');
+  // Determine active tab based on URL and defaultTab
+  const getActiveTab = (): 'overview' | 'songs' | 'setlists' | 'analytics' => {
+    if (defaultTab) return defaultTab;
+    
+    const searchParams = new URLSearchParams(location.search);
+    const tabParam = searchParams.get('tab');
+    
+    if (location.pathname.endsWith('/songs')) return 'songs';
+    if (location.pathname.endsWith('/setlists')) return 'setlists';
+    if (tabParam === 'analytics') return 'analytics';
+    
+    return 'overview';
+  };
+  
+  const [activeTab, setActiveTab] = useState<'overview' | 'songs' | 'setlists' | 'analytics'>(getActiveTab());
+
+  // Handle tab navigation
+  const handleTabChange = (tab: 'overview' | 'songs' | 'setlists' | 'analytics') => {
+    setActiveTab(tab);
+    
+    // Navigate to appropriate URL
+    switch (tab) {
+      case 'songs':
+        navigate(`/group/${id}/songs`);
+        break;
+      case 'setlists':
+        navigate(`/group/${id}/setlists`);
+        break;
+      case 'analytics':
+        // For analytics, we'll use a query parameter to stay on the main route
+        navigate(`/group/${id}?tab=analytics`);
+        break;
+      case 'overview':
+      default:
+        navigate(`/group/${id}`);
+        break;
+    }
+  };
+
+  // Update active tab when URL changes
+  useEffect(() => {
+    setActiveTab(getActiveTab());
+  }, [location.pathname, location.search, defaultTab]);
 
   useEffect(() => {
     if (id) {
@@ -414,7 +462,7 @@ export default function GroupManagement() {
       <div className="border-b border-gray-200 mb-6">
         <nav className="-mb-px flex space-x-8">
           <button
-            onClick={() => setActiveTab('overview')}
+            onClick={() => handleTabChange('overview')}
             className={`${
               activeTab === 'overview'
                 ? 'border-indigo-500 text-indigo-600'
@@ -425,9 +473,9 @@ export default function GroupManagement() {
             <span>Vista General</span>
           </button>
           <button
-            onClick={() => setActiveTab('setlists')}
+            onClick={() => handleTabChange('songs')}
             className={`${
-              activeTab === 'setlists'
+              activeTab === 'songs' || activeTab === 'setlists'
                 ? 'border-indigo-500 text-indigo-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
@@ -436,7 +484,7 @@ export default function GroupManagement() {
             <span>Canciones y Setlists</span>
           </button>
           <button
-            onClick={() => setActiveTab('analytics')}
+            onClick={() => handleTabChange('analytics')}
             className={`${
               activeTab === 'analytics'
                 ? 'border-indigo-500 text-indigo-600'
@@ -502,11 +550,12 @@ export default function GroupManagement() {
         </>
       )}
 
-      {activeTab === 'setlists' && group && id && (
+      {(activeTab === 'songs' || activeTab === 'setlists') && group && id && (
         <SetlistPage 
           groupId={id} 
           canManageSongs={userRole === 'admin' || isPrincipalMember}
           canManageSetlists={userRole === 'admin' || isPrincipalMember}
+          defaultTab={activeTab === 'setlists' ? 'setlists' : 'songs'}
         />
       )}
 

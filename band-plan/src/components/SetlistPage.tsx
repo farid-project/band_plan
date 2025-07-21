@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import SongManagement from './SongManagement';
 import SetlistManagement from './SetlistManagement';
 
@@ -6,12 +6,23 @@ interface SetlistPageProps {
   groupId: string;
   canManageSongs?: boolean;
   canManageSetlists?: boolean;
+  defaultTab?: 'songs' | 'setlists';
 }
 
 type TabType = 'songs' | 'setlists';
 
-export default function SetlistPage({ groupId, canManageSongs = true, canManageSetlists = true }: SetlistPageProps) {
-  const [activeTab, setActiveTab] = useState<TabType>('songs');
+export default function SetlistPage({ 
+  groupId, 
+  canManageSongs = true, 
+  canManageSetlists = true,
+  defaultTab = 'songs'
+}: SetlistPageProps) {
+  const [activeTab, setActiveTab] = useState<TabType>(defaultTab);
+
+  // Update active tab when defaultTab changes
+  useEffect(() => {
+    setActiveTab(defaultTab);
+  }, [defaultTab]);
 
   return (
     <div className="space-y-6">
