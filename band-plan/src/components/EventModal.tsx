@@ -487,6 +487,10 @@ export default function EventModal({
   };
 
   const sortAndFilterDates = (dates: Date[]) => {
+    // Obtener la fecha de hoy para filtrar fechas pasadas
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Resetear horas para comparar solo fechas
+    
     // Convertir las fechas disponibles a strings para comparación más fácil
     const availableDatesSet = new Set(availableDates.map(d => format(d, 'yyyy-MM-dd')));
     
@@ -496,10 +500,16 @@ export default function EventModal({
     );
     
     return dates
-      // Filtramos solo las fechas que están en availableDatesSet Y NO tienen eventos
+      // Filtrar fechas que:
+      // 1. Estén en availableDatesSet
+      // 2. NO tengan eventos ya programados
+      // 3. Sean de hoy en adelante (no fechas pasadas)
       .filter(date => {
         const dateStr = format(date, 'yyyy-MM-dd');
-        return availableDatesSet.has(dateStr) && !existingEventDates.has(dateStr);
+        const isDateInFuture = date >= today;
+        return availableDatesSet.has(dateStr) && 
+               !existingEventDates.has(dateStr) && 
+               isDateInFuture;
       })
       // Ordenamos las fechas de manera ascendente
       .sort((a, b) => a.getTime() - b.getTime());

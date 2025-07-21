@@ -11,6 +11,23 @@ import UnifiedSongSearch from './UnifiedSongSearch';
 import { SpotifyTrack } from '../services/spotifyService';
 import { useSpotify } from '../hooks/useSpotify';
 
+interface DeezerTrack {
+  id: number;
+  title: string;
+  artist: {
+    name: string;
+  };
+  album: {
+    title: string;
+    cover: string;
+    cover_small: string;
+    cover_medium: string;
+  };
+  duration: number;
+  preview: string;
+  link: string;
+}
+
 interface SongManagementProps {
   groupId: string;
   canManageSongs?: boolean;
@@ -38,14 +55,6 @@ const KEYS = [
   'G', 'G#', 'Ab', 'A', 'A#', 'Bb', 'B'
 ];
 
-function useDebounce(value: string, delay: number) {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-  useEffect(() => {
-    const handler = setTimeout(() => setDebouncedValue(value), delay);
-    return () => clearTimeout(handler);
-  }, [value, delay]);
-  return debouncedValue;
-}
 
 export default function SongManagement({ groupId, canManageSongs = true }: SongManagementProps) {
   const [songs, setSongs] = useState<Song[]>([]);
@@ -55,10 +64,6 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
   const [formData, setFormData] = useState<SongFormData>(initialFormData);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [songToDelete, setSongToDelete] = useState<Song | null>(null);
-  const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
-  const suggestionsRef = useRef<HTMLDivElement>(null);
   const [editingCell, setEditingCell] = useState<{ songId: string; field: string } | null>(null);
   const [inlineValue, setInlineValue] = useState<string>('');
   const [inlineLoading, setInlineLoading] = useState(false);
@@ -72,7 +77,6 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
   // Spotify integration
   const { isAuthenticated } = useSpotify();
 
-  const debouncedTitle = useDebounce(formData.title, 400);
 
   // Filter songs based on search criteria
   const filteredSongs = songs.filter(song => {
@@ -97,39 +101,6 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
     loadSongs();
   }, [groupId]);
 
-  useEffect(() => {
-    console.log('Debounced title changed:', debouncedTitle);
-    if (debouncedTitle.length < 2) {
-      console.log('Title too short, clearing suggestions');
-      setSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
-    console.log('Fetching suggestions for:', debouncedTitle);
-    setLoadingSuggestions(true);
-    fetch(`https://corsproxy.io/?https://api.deezer.com/search?q=${encodeURIComponent(debouncedTitle)}`)
-      .then(res => res.json())
-      .then(data => {
-        console.log('Deezer API response:', data);
-        setSuggestions(data.data || []);
-        setShowSuggestions(true);
-      })
-      .catch((error) => {
-        console.error('Error fetching suggestions:', error);
-        setSuggestions([]);
-      })
-      .finally(() => setLoadingSuggestions(false));
-  }, [debouncedTitle]);
-
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (suggestionsRef.current && !suggestionsRef.current.contains(event.target as Node)) {
-        setShowSuggestions(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   const loadSongs = async () => {
     setLoading(true);
@@ -161,14 +132,41 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
       created_by: user.id
     };
     
-    // Search interface will close automatically via the component
-    
     try {
       await createSong(songData);
       await loadSongs();
       toast.success(`"${track.name}" añadida desde Spotify`);
     } catch (error) {
       console.error('Error creating song from Spotify:', error);
+      toast.error('Error al añadir la canción');
+    }
+  };
+
+  const handleDeezerTrackSelect = async (track: DeezerTrack) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast.error('No se pudo obtener la información del usuario');
+      return;
+    }
+
+    const durationMinutes = Math.round(track.duration / 60);
+    
+    const songData = {
+      title: track.title,
+      artist: track.artist.name,
+      duration_minutes: durationMinutes.toString(),
+      key: '',
+      notes: `Álbum: ${track.album.title} | Fuente: Deezer`,
+      group_id: groupId,
+      created_by: user.id
+    };
+    
+    try {
+      await createSong(songData);
+      await loadSongs();
+      toast.success(`"${track.title}" añadida desde Deezer`);
+    } catch (error) {
+      console.error('Error creating song from Deezer:', error);
       toast.error('Error al añadir la canción');
     }
   };
@@ -264,15 +262,6 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
     return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
   };
 
-  const handleSuggestionClick = (track: any) => {
-    setFormData({
-      ...formData,
-      title: track.title,
-      artist: track.artist.name,
-      duration_minutes: Math.round(track.duration / 60).toString()
-    });
-    setShowSuggestions(false);
-  };
 
   const handleCellEdit = (songId: string, field: string, value: string) => {
     setEditingCell({ songId, field });
@@ -328,7 +317,13 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
         <div className="mb-6">
           <UnifiedSongSearch
             onSpotifyTrackSelect={handleSpotifyTrackSelect}
-            onManualAdd={() => setShowForm(true)}
+            onDeezerTrackSelect={handleDeezerTrackSelect}
+            onManualAdd={(title) => {
+              if (title) {
+                setFormData(prev => ({ ...prev, title }));
+              }
+              setShowForm(true);
+            }}
             className="w-full"
           />
         </div>
@@ -349,35 +344,12 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
           </h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="relative">
-              <Input
-                label="Título *"
-                value={formData.title}
-                onChange={(e) => {
-                  setFormData({ ...formData, title: e.target.value });
-                  setShowSuggestions(true);
-                }}
-                required
-                autoComplete="off"
-              />
-              {showSuggestions && suggestions.length > 0 && (
-                <div ref={suggestionsRef} className="absolute z-10 left-0 right-0 bg-white border border-gray-200 rounded shadow-lg max-h-60 overflow-y-auto mt-1">
-                  {loadingSuggestions && (
-                    <div className="p-2 text-gray-500 text-sm">Buscando...</div>
-                  )}
-                  {suggestions.map((track) => (
-                    <div
-                      key={track.id}
-                      className="p-2 hover:bg-blue-100 cursor-pointer flex flex-col"
-                      onClick={() => handleSuggestionClick(track)}
-                    >
-                      <span className="font-medium">{track.title}</span>
-                      <span className="text-xs text-gray-500">{track.artist.name} &middot; {Math.round(track.duration / 60)} min</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <Input
+              label="Título *"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+              required
+            />
             
             <Input
               label="Artista"

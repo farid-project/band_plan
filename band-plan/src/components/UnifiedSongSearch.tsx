@@ -4,22 +4,42 @@ import { useSpotify } from '../hooks/useSpotify';
 import { Search, Plus, Play, Pause, ExternalLink, Clock, TrendingUp, Loader2, Music } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
+interface DeezerTrack {
+  id: number;
+  title: string;
+  artist: {
+    name: string;
+  };
+  album: {
+    title: string;
+    cover: string;
+    cover_small: string;
+    cover_medium: string;
+  };
+  duration: number;
+  preview: string;
+  link: string;
+}
+
 interface UnifiedSongSearchProps {
   onSpotifyTrackSelect: (track: SpotifyTrack) => void;
-  onManualAdd: () => void;
+  onDeezerTrackSelect?: (track: DeezerTrack) => void;
+  onManualAdd: (title?: string) => void;
   placeholder?: string;
   className?: string;
 }
 
 const UnifiedSongSearch: React.FC<UnifiedSongSearchProps> = ({
   onSpotifyTrackSelect,
+  onDeezerTrackSelect,
   onManualAdd,
-  placeholder = 'Buscar en Spotify o añadir manualmente...',
+  placeholder = 'Buscar canciones o añadir manualmente...',
   className = '',
 }) => {
   const { isAuthenticated, searchTracks, loading: spotifyLoading } = useSpotify();
   const [query, setQuery] = useState<string>('');
   const [tracks, setTracks] = useState<SpotifyTrack[]>([]);
+  const [deezerTracks, setDeezerTracks] = useState<DeezerTrack[]>([]);
   const [loading, setLoading] = useState(false);
   const [showResults, setShowResults] = useState(false);
   const [playingPreview, setPlayingPreview] = useState<string | null>(null);
@@ -42,9 +62,9 @@ const UnifiedSongSearch: React.FC<UnifiedSongSearchProps> = ({
   }, []);
 
   useEffect(() => {
-    if (!isAuthenticated || safeQuery.length < 2) {
+    if (safeQuery.length < 2) {
       setTracks([]);
-      // Don't hide results - manual add should always be available
+      setDeezerTracks([]);
       return;
     }
 
@@ -64,37 +84,61 @@ const UnifiedSongSearch: React.FC<UnifiedSongSearchProps> = ({
   }, [safeQuery, isAuthenticated]);
 
   const handleSearch = async (searchQuery: string) => {
-    if (!isAuthenticated) {
-      setShowResults(true); // Show manual option
-      return;
-    }
-
     setLoading(true);
-    try {
-      const results = await searchTracks(searchQuery);
-      setTracks(results);
-      setShowResults(true);
-    } catch (error) {
-      console.error('Error searching tracks:', error);
-      setTracks([]);
-      setShowResults(true); // Still show manual option
-    } finally {
-      setLoading(false);
+    
+    if (isAuthenticated) {
+      // Search Spotify when authenticated
+      try {
+        const results = await searchTracks(searchQuery);
+        setTracks(results);
+        setShowResults(true);
+      } catch (error) {
+        console.error('Error searching tracks:', error);
+        setTracks([]);
+        setShowResults(true);
+      }
+    } else {
+      // Search Deezer when no Spotify authentication
+      try {
+        const response = await fetch(`https://corsproxy.io/?https://api.deezer.com/search?q=${encodeURIComponent(searchQuery)}`);
+        const data = await response.json();
+        setDeezerTracks(data.data || []);
+        setShowResults(true);
+      } catch (error) {
+        console.error('Error searching Deezer:', error);
+        setDeezerTracks([]);
+        setShowResults(true);
+      }
     }
+    
+    setLoading(false);
   };
 
   const handleTrackSelect = (track: SpotifyTrack) => {
     onSpotifyTrackSelect(track);
     setQuery('');
     setTracks([]);
+    setDeezerTracks([]);
+    setShowResults(false);
+    stopPreview();
+  };
+
+  const handleDeezerTrackSelect = (track: DeezerTrack) => {
+    if (onDeezerTrackSelect) {
+      onDeezerTrackSelect(track);
+    }
+    setQuery('');
+    setTracks([]);
+    setDeezerTracks([]);
     setShowResults(false);
     stopPreview();
   };
 
   const handleManualAdd = () => {
-    onManualAdd();
+    onManualAdd(safeQuery);
     setQuery('');
     setTracks([]);
+    setDeezerTracks([]);
     setShowResults(false);
     stopPreview();
   };
@@ -141,6 +185,41 @@ const UnifiedSongSearch: React.FC<UnifiedSongSearchProps> = ({
     const minutes = Math.floor(durationMs / 60000);
     const seconds = Math.floor((durationMs % 60000) / 1000);
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const formatDeezerDuration = (durationSec: number): string => {
+    const minutes = Math.floor(durationSec / 60);
+    const seconds = durationSec % 60;
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const playDeezerPreview = (track: DeezerTrack) => {
+    if (playingPreview === track.id.toString()) {
+      stopPreview();
+      return;
+    }
+
+    if (!track.preview) {
+      toast.error('Preview no disponible para esta canción');
+      return;
+    }
+
+    stopPreview();
+    
+    if (previewAudioRef.current) {
+      previewAudioRef.current.src = track.preview;
+      previewAudioRef.current.play();
+      setPlayingPreview(track.id.toString());
+
+      previewAudioRef.current.onended = () => {
+        setPlayingPreview(null);
+      };
+    }
+  };
+
+  const openInDeezer = (track: DeezerTrack) => {
+    window.open(track.link, '_blank');
+    toast.success('Abriendo en Deezer');
   };
 
   if (spotifyLoading) {
@@ -281,7 +360,88 @@ const UnifiedSongSearch: React.FC<UnifiedSongSearchProps> = ({
             </>
           )}
 
-          {/* No results message */}
+          {/* Deezer results */}
+          {!isAuthenticated && deezerTracks.length > 0 && (
+            <>
+              <div className="px-4 py-2 bg-orange-50 border-b border-orange-100">
+                <p className="text-sm text-orange-700 font-medium flex items-center gap-2">
+                  <Music className="w-4 h-4" />
+                  Resultados de Deezer
+                </p>
+              </div>
+              {deezerTracks.map((track) => (
+                <div
+                  key={track.id}
+                  className="p-3 hover:bg-orange-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                >
+                  <div className="flex items-start gap-3">
+                    {/* Album cover */}
+                    <img
+                      src={track.album.cover_small || track.album.cover}
+                      alt={track.album.title}
+                      className="w-12 h-12 rounded object-cover flex-shrink-0"
+                    />
+
+                    {/* Track info */}
+                    <div className="flex-1 min-w-0" onClick={() => handleDeezerTrackSelect(track)}>
+                      <div className="flex items-start justify-between">
+                        <div className="min-w-0">
+                          <h4 className="font-medium text-gray-900 truncate">{track.title}</h4>
+                          <p className="text-sm text-gray-600 truncate">
+                            {track.artist.name}
+                          </p>
+                          <p className="text-xs text-gray-500 truncate">{track.album.title}</p>
+                        </div>
+                        
+                        {/* Metadata */}
+                        <div className="flex items-center gap-2 text-xs text-gray-500 ml-2">
+                          <div className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {formatDeezerDuration(track.duration)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {/* Preview button */}
+                      {track.preview && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            playDeezerPreview(track);
+                          }}
+                          className="p-1.5 text-gray-400 hover:text-orange-500 transition-colors"
+                          title="Preview (30s)"
+                        >
+                          {playingPreview === track.id.toString() ? (
+                            <Pause className="w-4 h-4" />
+                          ) : (
+                            <Play className="w-4 h-4" />
+                          )}
+                        </button>
+                      )}
+
+                      {/* Open in Deezer button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openInDeezer(track);
+                        }}
+                        className="p-1.5 text-gray-400 hover:text-orange-500 transition-colors"
+                        title="Abrir en Deezer"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+
+          {/* No results messages */}
           {isAuthenticated && tracks.length === 0 && !loading && safeQuery.length >= 2 && (
             <div className="p-4 text-center text-gray-500 border-b border-gray-100">
               <Music className="w-8 h-8 text-gray-300 mx-auto mb-2" />
@@ -289,11 +449,10 @@ const UnifiedSongSearch: React.FC<UnifiedSongSearchProps> = ({
             </div>
           )}
 
-          {/* Not authenticated message */}
-          {!isAuthenticated && safeQuery.length >= 2 && (
+          {!isAuthenticated && deezerTracks.length === 0 && !loading && safeQuery.length >= 2 && (
             <div className="p-4 text-center text-gray-500 border-b border-gray-100">
               <Music className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-              <p>Conecta con Spotify para buscar canciones</p>
+              <p>No se encontraron canciones en Deezer para "{safeQuery}"</p>
             </div>
           )}
         </div>
