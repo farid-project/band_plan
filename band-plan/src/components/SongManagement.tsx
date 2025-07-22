@@ -10,6 +10,8 @@ import SpotifyConnect from './SpotifyConnect';
 import UnifiedSongSearch from './UnifiedSongSearch';
 import { SpotifyTrack, spotifyService } from '../services/spotifyService';
 import { useSpotify } from '../hooks/useSpotify';
+import { useRealtimeSubscription } from '../hooks/useRealtimeSubscription';
+import { TableSkeleton } from './Skeleton';
 
 interface DeezerTrack {
   id: number;
@@ -100,6 +102,26 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
   useEffect(() => {
     loadSongs();
   }, [groupId]);
+
+  // Real-time subscription for songs
+  useRealtimeSubscription({
+    table: 'songs',
+    filter: `group_id=eq.${groupId}`,
+    onInsert: (payload) => {
+      setSongs(prev => [...prev, payload.new as Song]);
+      toast.success('Nueva canción añadida en tiempo real');
+    },
+    onUpdate: (payload) => {
+      setSongs(prev => prev.map(song => 
+        song.id === payload.new.id ? payload.new as Song : song
+      ));
+    },
+    onDelete: (payload) => {
+      setSongs(prev => prev.filter(song => song.id !== payload.old.id));
+      toast.success('Canción eliminada en tiempo real');
+    },
+    enabled: !!groupId
+  });
 
 
   const loadSongs = async () => {
@@ -306,7 +328,19 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
   };
 
   if (loading) {
-    return <div className="text-center py-8">Cargando canciones...</div>;
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+            <div className="h-8 w-48 bg-gray-200 animate-pulse rounded"></div>
+            <div className="h-10 w-32 bg-gray-200 animate-pulse rounded"></div>
+          </div>
+        </div>
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          <TableSkeleton rows={8} />
+        </div>
+      </div>
+    );
   }
 
   return (

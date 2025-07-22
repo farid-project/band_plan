@@ -18,6 +18,8 @@ import Button from './Button';
 import Input from './Input';
 import { supabase } from '../lib/supabase';
 import { FaMusic, FaPlus, FaEdit, FaGripVertical, FaCopy, FaSpotify } from 'react-icons/fa';
+import { useRealtimeSubscription } from '../hooks/useRealtimeSubscription';
+import { CardSkeleton, ListSkeleton } from './Skeleton';
 import {
   DndContext,
   closestCenter,
@@ -186,6 +188,58 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
   useEffect(() => {
     loadData();
   }, [groupId]);
+
+  // Real-time subscription for setlists
+  useRealtimeSubscription({
+    table: 'setlists',
+    filter: `group_id=eq.${groupId}`,
+    onInsert: (payload) => {
+      setSetlists(prev => [...prev, { ...payload.new as Setlist, songs: [] }]);
+      toast.success('Nuevo setlist añadido en tiempo real');
+    },
+    onUpdate: (payload) => {
+      const updatedSetlist = payload.new as Setlist;
+      setSetlists(prev => prev.map(setlist => 
+        setlist.id === updatedSetlist.id ? { ...setlist, ...updatedSetlist } : setlist
+      ));
+      
+      if (selectedSetlist?.id === updatedSetlist.id) {
+        setSelectedSetlist(prev => prev ? { ...prev, ...updatedSetlist } : null);
+      }
+    },
+    onDelete: (payload) => {
+      setSetlists(prev => prev.filter(setlist => setlist.id !== payload.old.id));
+      if (selectedSetlist?.id === payload.old.id) {
+        setSelectedSetlist(null);
+      }
+      toast.success('Setlist eliminado en tiempo real');
+    },
+    enabled: !!groupId
+  });
+
+  // Real-time subscription for setlist_songs
+  useRealtimeSubscription({
+    table: 'setlist_songs',
+    onInsert: (payload) => {
+      const newSetlistSong = payload.new as SetlistSong;
+      if (selectedSetlist?.id === newSetlistSong.setlist_id) {
+        refreshSelectedSetlist();
+      }
+    },
+    onUpdate: (payload) => {
+      const updatedSetlistSong = payload.new as SetlistSong;
+      if (selectedSetlist?.id === updatedSetlistSong.setlist_id) {
+        refreshSelectedSetlist();
+      }
+    },
+    onDelete: (payload) => {
+      const deletedSetlistSong = payload.old as SetlistSong;
+      if (selectedSetlist?.id === deletedSetlistSong.setlist_id) {
+        refreshSelectedSetlist();
+      }
+    },
+    enabled: !!selectedSetlist
+  });
 
   useEffect(() => {
     if (selectedSetlist) {
@@ -682,7 +736,15 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
   };
 
   if (loading) {
-    return <div className="text-center py-8">Cargando setlists...</div>;
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div className="h-8 w-40 bg-gray-200 animate-pulse rounded"></div>
+          <div className="h-10 w-32 bg-gray-200 animate-pulse rounded"></div>
+        </div>
+        <CardSkeleton count={4} />
+      </div>
+    );
   }
 
 

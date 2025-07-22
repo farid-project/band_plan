@@ -14,6 +14,8 @@ import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 import { safeSupabaseRequest } from '../lib/supabaseUtils';
 import CalendarInstructionsModal from '../components/CalendarInstructionsModal';
 import SetlistPage from '../components/SetlistPage';
+import { useRealtimeSubscription } from '../hooks/useRealtimeSubscription';
+import { MemberSkeleton } from '../components/Skeleton';
 
 interface ExtendedGroupMember extends GroupMember {
   instruments: {
@@ -94,6 +96,24 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
       checkPermissions();
     }
   }, [id, user, members]);
+
+  // Real-time subscription for group members
+  useRealtimeSubscription({
+    table: 'group_members',
+    filter: `group_id=eq.${id}`,
+    onInsert: () => {
+      fetchGroupData();
+      toast.success('Nuevo miembro añadido en tiempo real');
+    },
+    onUpdate: () => {
+      fetchGroupData();
+    },
+    onDelete: () => {
+      fetchGroupData();
+      toast.success('Miembro eliminado en tiempo real');
+    },
+    enabled: !!id
+  });
 
   const checkPermissions = async () => {
     if (!user) return;
@@ -416,8 +436,45 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-[400px]">
-        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <div className="h-8 w-48 bg-gray-200 animate-pulse rounded mb-2"></div>
+            <div className="h-4 w-64 bg-gray-200 animate-pulse rounded"></div>
+          </div>
+          <div className="h-10 w-32 bg-gray-200 animate-pulse rounded"></div>
+        </div>
+        
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex space-x-8">
+            <div className="h-10 w-20 bg-gray-200 animate-pulse rounded"></div>
+            <div className="h-10 w-16 bg-gray-200 animate-pulse rounded"></div>
+            <div className="h-10 w-20 bg-gray-200 animate-pulse rounded"></div>
+          </nav>
+        </div>
+        
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            <div className="bg-white shadow rounded-lg">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <div className="h-6 w-32 bg-gray-200 animate-pulse rounded"></div>
+              </div>
+              <MemberSkeleton count={6} />
+            </div>
+          </div>
+          
+          <div className="bg-white shadow rounded-lg">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <div className="h-6 w-40 bg-gray-200 animate-pulse rounded"></div>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div className="h-64 bg-gray-200 animate-pulse rounded"></div>
+                <div className="h-10 w-full bg-gray-200 animate-pulse rounded"></div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
