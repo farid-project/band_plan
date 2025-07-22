@@ -1,7 +1,9 @@
 import React from 'react';
 import { useSpotify } from '../hooks/useSpotify';
-import { Music, LogOut, Loader2 } from 'lucide-react';
+import { Music, LogOut, Loader2, RotateCcw } from 'lucide-react';
 import Button from './Button';
+import { spotifyService } from '../services/spotifyService';
+import { toast } from 'react-hot-toast';
 
 interface SpotifyConnectProps {
   className?: string;
@@ -9,7 +11,32 @@ interface SpotifyConnectProps {
 }
 
 const SpotifyConnect: React.FC<SpotifyConnectProps> = ({ className = '', compact = false }) => {
-  const { isAuthenticated, user, loading, login, logout } = useSpotify();
+  const { isAuthenticated, user, loading, login, logout, refreshAuthStatus } = useSpotify();
+
+
+  const handleResetSpotify = () => {
+    console.log('🎵 Resetting Spotify authentication state...');
+    spotifyService.clearAuthState();
+    localStorage.removeItem('spotify_auth_state');
+    localStorage.removeItem('spotify_code_verifier');
+    localStorage.removeItem('spotify_return_url');
+    
+    // Clear URL parameters if they exist
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('code') || url.searchParams.has('state')) {
+      url.searchParams.delete('code');
+      url.searchParams.delete('state');
+      url.searchParams.delete('error');
+      window.history.replaceState({}, document.title, url.toString());
+    }
+    
+    toast.success('Estado de Spotify limpiado. Puedes intentar conectar de nuevo.');
+  };
+
+  const handleRefresh = () => {
+    console.log('🎵 Manual refresh requested');
+    refreshAuthStatus();
+  };
 
   if (loading) {
     return (
@@ -53,14 +80,34 @@ const SpotifyConnect: React.FC<SpotifyConnectProps> = ({ className = '', compact
               <li>• Reproducir previews de canciones</li>
               <li>• Control de reproducción desde la app</li>
             </ul>
-            <Button
-              onClick={login}
-              variant="primary"
-              className="bg-green-500 hover:bg-green-600 text-white"
-            >
-              <Music className="w-4 h-4 mr-2" />
-              Conectar con Spotify
-            </Button>
+            <div className="flex gap-3">
+              <Button
+                onClick={login}
+                variant="primary"
+                className="bg-green-500 hover:bg-green-600 text-white"
+              >
+                <Music className="w-4 h-4 mr-2" />
+                Conectar con Spotify
+              </Button>
+              <Button
+                onClick={handleRefresh}
+                variant="secondary"
+                className="text-blue-600 hover:text-blue-800"
+                title="Actualizar estado de autenticación"
+              >
+                <RotateCcw className="w-4 h-4 mr-2" />
+                Refrescar
+              </Button>
+              <Button
+                onClick={handleResetSpotify}
+                variant="secondary"
+                className="text-gray-600 hover:text-gray-800"
+                title="Limpiar estado de Spotify si hay problemas"
+              >
+                <RotateCcw className="w-4 h-4 mr-2" />
+                Reset
+              </Button>
+            </div>
           </div>
         </div>
       </div>

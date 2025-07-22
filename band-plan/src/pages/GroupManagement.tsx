@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Group, GroupMember, Instrument } from '../types';
 import Button from '../components/Button';
-import { Plus, Music, User, Edit2, Calendar, Loader2, Trash2, ListMusic, BarChart3 } from 'lucide-react';
+import { Plus, Music, User, Edit2, Calendar, Loader2, Trash2, ListMusic } from 'lucide-react';
 import AddMemberModal from '../components/AddMemberModal';
 import EditMemberModal from '../components/EditMemberModal';
 import { toast } from 'react-hot-toast';
@@ -14,7 +14,6 @@ import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 import { safeSupabaseRequest } from '../lib/supabaseUtils';
 import CalendarInstructionsModal from '../components/CalendarInstructionsModal';
 import SetlistPage from '../components/SetlistPage';
-import AnalyticsDashboard from '../components/AnalyticsDashboard';
 
 interface ExtendedGroupMember extends GroupMember {
   instruments: {
@@ -24,7 +23,7 @@ interface ExtendedGroupMember extends GroupMember {
 }
 
 interface GroupManagementProps {
-  defaultTab?: 'overview' | 'songs' | 'setlists' | 'analytics';
+  defaultTab?: 'overview' | 'songs' | 'setlists';
 }
 
 export default function GroupManagement({ defaultTab }: GroupManagementProps) {
@@ -49,23 +48,19 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
   const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
   const [calendarUrl, setCalendarUrl] = useState('');
   // Determine active tab based on URL and defaultTab
-  const getActiveTab = (): 'overview' | 'songs' | 'setlists' | 'analytics' => {
+  const getActiveTab = (): 'overview' | 'songs' | 'setlists' => {
     if (defaultTab) return defaultTab;
-    
-    const searchParams = new URLSearchParams(location.search);
-    const tabParam = searchParams.get('tab');
     
     if (location.pathname.endsWith('/songs')) return 'songs';
     if (location.pathname.endsWith('/setlists')) return 'setlists';
-    if (tabParam === 'analytics') return 'analytics';
     
     return 'overview';
   };
   
-  const [activeTab, setActiveTab] = useState<'overview' | 'songs' | 'setlists' | 'analytics'>(getActiveTab());
+  const [activeTab, setActiveTab] = useState<'overview' | 'songs' | 'setlists'>(getActiveTab());
 
   // Handle tab navigation
-  const handleTabChange = (tab: 'overview' | 'songs' | 'setlists' | 'analytics') => {
+  const handleTabChange = (tab: 'overview' | 'songs' | 'setlists') => {
     setActiveTab(tab);
     
     // Navigate to appropriate URL
@@ -75,10 +70,6 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
         break;
       case 'setlists':
         navigate(`/group/${id}/setlists`);
-        break;
-      case 'analytics':
-        // For analytics, we'll use a query parameter to stay on the main route
-        navigate(`/group/${id}?tab=analytics`);
         break;
       case 'overview':
       default:
@@ -483,17 +474,6 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
             <ListMusic className="w-4 h-4" />
             <span>Canciones y Setlists</span>
           </button>
-          <button
-            onClick={() => handleTabChange('analytics')}
-            className={`${
-              activeTab === 'analytics'
-                ? 'border-indigo-500 text-indigo-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
-          >
-            <BarChart3 className="w-4 h-4" />
-            <span>Analytics</span>
-          </button>
         </nav>
       </div>
 
@@ -559,9 +539,6 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
         />
       )}
 
-      {activeTab === 'analytics' && group && id && (
-        <AnalyticsDashboard groupId={id} />
-      )}
 
       {/* Modals */}
       {group && (canAddMembers || isPrincipalMember) && (!isUserMember || userRole === 'admin' || isPrincipalMember) && (

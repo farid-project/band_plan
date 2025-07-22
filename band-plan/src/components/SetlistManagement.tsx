@@ -803,15 +803,6 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
                            <Button variant="primary" onClick={() => setShowCreateMedleyModal(true)}>
                                <FaPlus className="mr-1" /> Crear Medley
                            </Button>
-                           {isAuthenticated && (
-                             <Button 
-                               variant="secondary" 
-                               onClick={() => handleCreateSpotifyPlaylist(selectedSetlist)}
-                               className="bg-green-500 hover:bg-green-600 text-white"
-                             >
-                               <FaSpotify className="mr-2" /> Playlist Spotify
-                             </Button>
-                           )}
                             <Button variant="secondary" onClick={() => handleEdit(selectedSetlist)}>
                                 <FaEdit className="mr-2" /> Editar
                             </Button>
