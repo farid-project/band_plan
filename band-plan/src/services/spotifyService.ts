@@ -62,10 +62,29 @@ class SpotifyService {
   constructor() {
     // Load tokens from localStorage on initialization
     this.loadTokensFromStorage();
+    
+    // Debug: Log configuration
+    console.log('🎵 Spotify Service Config:', {
+      clientId: this.clientId ? this.clientId.substring(0, 8) + '...' : 'NOT SET',
+      redirectUri: this.redirectUri || 'NOT SET',
+      hasClientId: !!this.clientId,
+      hasRedirectUri: !!this.redirectUri
+    });
   }
 
   // Authentication methods
   async getAuthUrl(): Promise<string> {
+    console.log('🎵 getAuthUrl called, generating new auth URL...');
+    
+    // Only clear auth state if we're not currently processing auth
+    if (!this.isProcessingAuth) {
+      localStorage.removeItem('spotify_auth_state');
+      localStorage.removeItem('spotify_code_verifier');
+      console.log('🎵 Cleared previous auth state');
+    } else {
+      console.log('🎵 Auth in progress, keeping existing state');
+    }
+    
     const state = this.generateRandomString(16);
     const codeVerifier = this.generateRandomString(128);
 
@@ -73,6 +92,9 @@ class SpotifyService {
     localStorage.setItem('spotify_return_url', window.location.href);
     localStorage.setItem('spotify_auth_state', state);
     localStorage.setItem('spotify_code_verifier', codeVerifier);
+    
+    console.log('🎵 Generated new auth state:', state.substring(0, 8) + '...');
+    console.log('🎵 Using redirect URI:', this.redirectUri);
 
     const codeChallenge = await this.generateCodeChallenge(codeVerifier);
 
@@ -96,17 +118,21 @@ class SpotifyService {
       return false;
     }
 
+    console.log('🎵 SpotifyService: Starting handleAuthCallback...');
     this.isProcessingAuth = true;
 
     try {
       const storedState = localStorage.getItem('spotify_auth_state');
       const codeVerifier = localStorage.getItem('spotify_code_verifier');
 
-      console.log('🎵 Spotify auth callback:', {
-        receivedState: state,
-        storedState: storedState,
+      console.log('🎵 SpotifyService: Auth callback data:', {
+        receivedState: state ? state.substring(0, 10) + '...' : 'NULL',
+        storedState: storedState ? storedState.substring(0, 10) + '...' : 'NULL',
         hasCodeVerifier: !!codeVerifier,
-        codeLength: code?.length
+        codeLength: code?.length,
+        receivedStateLength: state?.length,
+        storedStateLength: storedState?.length,
+        statesMatch: state === storedState
       });
 
       if (!storedState) {
@@ -115,17 +141,26 @@ class SpotifyService {
       }
 
       if (state !== storedState) {
-        console.error('❌ State mismatch:', { received: state, stored: storedState });
+        console.error('❌ State mismatch:', { 
+          received: state, 
+          stored: storedState,
+          receivedLength: state?.length,
+          storedLength: storedState?.length,
+          match: state === storedState 
+        });
         // Clear potentially corrupted state
         localStorage.removeItem('spotify_auth_state');
         localStorage.removeItem('spotify_code_verifier');
-        throw new Error('State mismatch');
+        localStorage.removeItem('spotify_return_url');
+        throw new Error('State mismatch - auth state was corrupted. Please try connecting to Spotify again.');
       }
       
       if (!codeVerifier) {
         console.error('❌ Code verifier not found');
         throw new Error('Code verifier not found');
       }
+
+      console.log('🎵 SpotifyService: All validations passed, making token request...');
 
       const response = await fetch('https://accounts.spotify.com/api/token', {
         method: 'POST',
@@ -141,23 +176,39 @@ class SpotifyService {
         }),
       });
 
+      console.log('🎵 SpotifyService: Token request response status:', response.status);
+      
       if (!response.ok) {
-        throw new Error('Failed to exchange code for tokens');
+        const errorData = await response.text();
+        console.error('❌ SpotifyService: Token request failed:', response.status, errorData);
+        throw new Error(`Failed to exchange code for tokens: ${response.status} ${errorData}`);
       }
 
+      console.log('🎵 SpotifyService: Token request successful, parsing response...');
       const data = await response.json();
+      console.log('🎵 SpotifyService: Token data received:', {
+        hasAccessToken: !!data.access_token,
+        hasRefreshToken: !!data.refresh_token,
+        expiresIn: data.expires_in
+      });
       
       this.accessToken = data.access_token;
       this.refreshToken = data.refresh_token;
       this.tokenExpiry = Date.now() + (data.expires_in * 1000);
+      console.log('🎵 SpotifyService: Tokens stored in memory, saving to localStorage...');
 
       this.saveTokensToStorage();
       localStorage.removeItem('spotify_auth_state');
       localStorage.removeItem('spotify_code_verifier');
+      console.log('🎵 SpotifyService: Auth callback completed successfully!');
 
       return true;
     } catch (error) {
       console.error('Error in Spotify auth callback:', error);
+      // Clear any remaining auth state on error
+      localStorage.removeItem('spotify_auth_state');
+      localStorage.removeItem('spotify_code_verifier');
+      localStorage.removeItem('spotify_return_url');
       return false;
     } finally {
       this.isProcessingAuth = false;
@@ -351,6 +402,16 @@ class SpotifyService {
     this.clearTokensFromStorage();
     localStorage.removeItem('spotify_auth_state');
     localStorage.removeItem('spotify_code_verifier');
+    localStorage.removeItem('spotify_return_url');
+  }
+
+  // Clear auth state manually (useful for error recovery)
+  clearAuthState(): void {
+    console.log('🎵 Clearing Spotify auth state manually');
+    this.isProcessingAuth = false;
+    localStorage.removeItem('spotify_auth_state');
+    localStorage.removeItem('spotify_code_verifier');
+    localStorage.removeItem('spotify_return_url');
   }
 
   private async generateCodeChallenge(codeVerifier: string): Promise<string> {
@@ -369,15 +430,39 @@ class SpotifyService {
   }
 
   private saveTokensToStorage(): void {
+    console.log('🎵 SpotifyService: Saving tokens to storage...', {
+      hasAccessToken: !!this.accessToken,
+      hasRefreshToken: !!this.refreshToken,
+      hasTokenExpiry: !!this.tokenExpiry,
+      accessTokenLength: this.accessToken?.length,
+      tokenExpiry: this.tokenExpiry
+    });
+    
     if (this.accessToken) {
       localStorage.setItem('spotify_access_token', this.accessToken);
+      console.log('✅ Access token saved to localStorage');
     }
     if (this.refreshToken) {
       localStorage.setItem('spotify_refresh_token', this.refreshToken);
+      console.log('✅ Refresh token saved to localStorage');
     }
     if (this.tokenExpiry) {
       localStorage.setItem('spotify_token_expiry', this.tokenExpiry.toString());
+      console.log('✅ Token expiry saved to localStorage');
     }
+    
+    // Verify tokens were actually saved
+    const savedAccessToken = localStorage.getItem('spotify_access_token');
+    const savedRefreshToken = localStorage.getItem('spotify_refresh_token');
+    const savedTokenExpiry = localStorage.getItem('spotify_token_expiry');
+    
+    console.log('🎵 Verification - tokens in localStorage:', {
+      hasAccessToken: !!savedAccessToken,
+      hasRefreshToken: !!savedRefreshToken,
+      hasTokenExpiry: !!savedTokenExpiry,
+      accessTokenMatches: savedAccessToken === this.accessToken,
+      refreshTokenMatches: savedRefreshToken === this.refreshToken
+    });
   }
 
   private loadTokensFromStorage(): void {
