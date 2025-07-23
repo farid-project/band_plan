@@ -25,7 +25,7 @@ export default function CalendarInstructionsModal({
       <div className="fixed inset-0 bg-black/30" aria-hidden="true" />
       
       <div className="fixed inset-0 flex items-center justify-center p-4">
-        <Dialog.Panel className="mx-auto max-w-md rounded-lg bg-white p-6">
+        <Dialog.Panel className="mx-auto max-w-md w-full sm:max-w-lg rounded-lg bg-white p-4 sm:p-6 max-h-[90vh] overflow-y-auto">
           <Dialog.Title className="text-lg font-medium text-gray-900 flex items-center gap-2">
             <Calendar className="w-5 h-5" />
             Suscribirse al Calendario
@@ -62,16 +62,17 @@ export default function CalendarInstructionsModal({
 
             <div className="mt-4 bg-gray-50 p-3 rounded-md">
               <div className="text-sm text-gray-600 mb-2">URL del calendario:</div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                 <input
                   type="text"
                   value={calendarUrl}
                   readOnly
-                  className="flex-1 text-sm bg-white border border-gray-300 rounded-md px-3 py-2"
+                  className="flex-1 text-sm bg-white border border-gray-300 rounded-md px-3 py-2 min-w-0"
                 />
-                <Button onClick={copyUrl} variant="secondary" className="flex items-center gap-1">
+                <Button onClick={copyUrl} variant="secondary" size="sm" className="flex items-center justify-center gap-1 w-full sm:w-auto">
                   <Copy className="w-4 h-4" />
-                  Copiar
+                  <span className="sm:hidden">Copiar URL</span>
+                  <span className="hidden sm:inline">Copiar</span>
                 </Button>
               </div>
             </div>

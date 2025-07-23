@@ -97,7 +97,7 @@ function SortableSetlistItem({
       {canManageSetlists && (
         <div 
           {...listeners} 
-          className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 py-3 px-3 touch-none select-none min-w-[48px] min-h-[48px] flex items-center justify-center rounded-md hover:bg-gray-100 active:bg-gray-200 transition-colors"
+          className="cursor-grab active:cursor-grabbing text-gray-400 hover:text-gray-600 py-2 px-2 sm:py-3 sm:px-3 touch-none select-none min-w-[40px] min-h-[40px] sm:min-w-[48px] sm:min-h-[48px] flex items-center justify-center rounded-md hover:bg-gray-100 active:bg-gray-200 transition-colors"
           role="button"
           aria-label="Arrastrar para reordenar"
           tabIndex={0}
@@ -107,15 +107,17 @@ function SortableSetlistItem({
       )}
       <div className="flex-grow">
         {item.type === 'song' ? (
-          <div className="bg-white p-3 rounded-md shadow-sm border border-gray-200 flex justify-between items-center">
-            <div>
-              <p className="font-medium">{(item.data as SetlistSong).song?.title}</p>
-              <p className="text-sm text-gray-500">{(item.data as SetlistSong).song?.artist} - {(item.data as SetlistSong).song?.duration_minutes}m - Tono: {(item.data as SetlistSong).song?.key}</p>
+          <div className="bg-white p-2 sm:p-3 rounded-md shadow-sm border border-gray-200 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-sm sm:text-base truncate">{(item.data as SetlistSong).song?.title}</p>
+              <p className="text-xs sm:text-sm text-gray-500 break-words">{(item.data as SetlistSong).song?.artist} - {(item.data as SetlistSong).song?.duration_minutes}m - Tono: {(item.data as SetlistSong).song?.key}</p>
             </div>
             {canManageSetlists && (
               <Button 
                 variant="danger"
+                size="sm"
                 onClick={() => onRemoveSong((item.data as SetlistSong).setlist_id, (item.data as SetlistSong).song_id)}
+                className="w-full sm:w-auto"
               >
                 Eliminar
               </Button>
@@ -835,51 +837,55 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 lg:gap-6">
         <div className="lg:col-span-1 space-y-3">
           <h3 className="text-lg font-semibold text-gray-800 mb-3 lg:hidden">Setlists</h3>
-          {setlists.map((setlist) => (
-            <div
-              key={setlist.id}
-              className={`p-4 rounded-lg cursor-pointer transition-all ${selectedSetlist?.id === setlist.id ? 'bg-blue-600 text-white shadow-lg' : 'bg-white hover:bg-gray-100'}`}
-              onClick={() => handleSelectSetlist(setlist)}
-            >
-              <h4 className={`font-bold ${selectedSetlist?.id === setlist.id ? 'text-white' : 'text-gray-800'}`}>{setlist.name}</h4>
-              <p className={`text-sm ${selectedSetlist?.id === setlist.id ? 'text-blue-100' : 'text-gray-500'}`}>
-                {(setlist.songs?.length || 0) + (setlist.medleys?.length || 0)} items
-              </p>
-            </div>
-          ))}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3">
+            {setlists.map((setlist) => (
+              <div
+                key={setlist.id}
+                className={`p-3 sm:p-4 rounded-lg cursor-pointer transition-all ${selectedSetlist?.id === setlist.id ? 'bg-blue-600 text-white shadow-lg' : 'bg-white hover:bg-gray-100'}`}
+                onClick={() => handleSelectSetlist(setlist)}
+              >
+                <h4 className={`font-bold text-sm sm:text-base truncate ${selectedSetlist?.id === setlist.id ? 'text-white' : 'text-gray-800'}`}>{setlist.name}</h4>
+                <p className={`text-xs sm:text-sm ${selectedSetlist?.id === setlist.id ? 'text-blue-100' : 'text-gray-500'}`}>
+                  {(setlist.songs?.length || 0) + (setlist.medleys?.length || 0)} items
+                </p>
+              </div>
+            ))}
+          </div>
           {setlists.length === 0 && !loading && (
-            <p className="text-center text-gray-500 py-4">No hay setlists. ¡Crea el primero!</p>
+            <p className="text-center text-gray-500 py-4 text-sm">No hay setlists. ¡Crea el primero!</p>
           )}
         </div>
 
         <div className="lg:col-span-2">
           {selectedSetlist ? (
-             <div className="bg-white p-4 lg:p-6 rounded-lg shadow-md">
-                <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start mb-4 gap-4">
+             <div className="bg-white p-3 sm:p-4 lg:p-6 rounded-lg shadow-md">
+                <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start mb-4 gap-3 sm:gap-4">
                     <div className="min-w-0 flex-1">
-                        <h3 className="text-xl font-bold text-gray-800 truncate">{selectedSetlist.name}</h3>
-                        <p className="text-sm text-gray-500 break-words">{selectedSetlist.description}</p>
+                        <h3 className="text-lg sm:text-xl font-bold text-gray-800 truncate">{selectedSetlist.name}</h3>
+                        <p className="text-xs sm:text-sm text-gray-500 break-words">{selectedSetlist.description}</p>
                     </div>
                      {canManageSetlists && (
-                        <div className="flex flex-wrap gap-2 lg:flex-nowrap">
-                           <Button variant="primary" onClick={() => setShowCreateMedleyModal(true)}>
-                               <FaPlus className="mr-1" /> Crear Medley
+                        <div className="flex flex-col sm:flex-row flex-wrap gap-2 w-full sm:w-auto lg:flex-nowrap">
+                           <Button variant="primary" onClick={() => setShowCreateMedleyModal(true)} size="sm" className="w-full sm:w-auto">
+                               <FaPlus className="mr-1" /> 
+                               <span className="hidden sm:inline">Crear Medley</span>
+                               <span className="sm:hidden">Medley</span>
                            </Button>
-                            <Button variant="secondary" onClick={() => handleEdit(selectedSetlist)}>
+                            <Button variant="secondary" onClick={() => handleEdit(selectedSetlist)} size="sm" className="w-full sm:w-auto">
                                 <FaEdit className="mr-2" /> Editar
                             </Button>
-                            <Button variant="secondary" onClick={() => handleDuplicateClick(selectedSetlist)}>
+                            <Button variant="secondary" onClick={() => handleDuplicateClick(selectedSetlist)} size="sm" className="w-full sm:w-auto">
                                 <FaCopy className="mr-2" /> Duplicar
                             </Button>
-                            <Button variant="danger" onClick={() => handleDelete(selectedSetlist)}>
+                            <Button variant="danger" onClick={() => handleDelete(selectedSetlist)} size="sm" className="w-full sm:w-auto">
                                 Eliminar
                             </Button>
                         </div>
                      )}
                  </div>
-             <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 xl:gap-8">
+             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6 xl:gap-8">
                <div>
-                 <h4 className="font-semibold text-gray-700 mb-3">Canciones en el Setlist</h4>
+                 <h4 className="font-semibold text-gray-700 mb-3 text-sm sm:text-base">Canciones en el Setlist</h4>
                  <div className="space-y-2">
                    <DndContext 
                      sensors={sensors}
@@ -915,37 +921,37 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
    
                {canManageSetlists && (
                  <div>
-                   <h4 className="font-semibold text-gray-700 mb-3">Añadir Canción al Setlist</h4>
+                   <h4 className="font-semibold text-gray-700 mb-3 text-sm sm:text-base">Añadir Canción al Setlist</h4>
                    <Input
                     placeholder="Buscar canción..."
                     value={addSongSearch}
                     onChange={(e) => setAddSongSearch(e.target.value)}
                     className="mb-2"
                    />
-                   <div className="space-y-2 max-h-60 lg:max-h-80 overflow-y-auto pr-2">
+                   <div className="space-y-2 max-h-48 sm:max-h-60 lg:max-h-80 overflow-y-auto pr-1 sm:pr-2">
                     {getAvailableSongs(selectedSetlist)
                       .filter(song => 
                         song.title.toLowerCase().includes(addSongSearch.toLowerCase()) ||
                         song.artist?.toLowerCase().includes(addSongSearch.toLowerCase())
                       )
                       .map(song => (
-                       <div key={song.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-md">
-                         <div>
-                           <p className="font-medium text-sm">
+                       <div key={song.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-2 bg-gray-50 rounded-md gap-2">
+                         <div className="min-w-0 flex-1">
+                           <p className="font-medium text-xs sm:text-sm truncate">
                              {song.type === 'medley' && <span className="text-blue-600 mr-1">🎵</span>}
                              {song.title}
                            </p>
-                           <p className="text-xs text-gray-500">
+                           <p className="text-xs text-gray-500 truncate">
                              {song.type === 'medley' ? 'Medley' : song.artist}
                            </p>
                          </div>
-                         <Button onClick={() => handleAddSongToSetlist(selectedSetlist.id, song.id)}>
+                         <Button onClick={() => handleAddSongToSetlist(selectedSetlist.id, song.id)} size="sm" className="w-full sm:w-auto">
                             <FaPlus />
                          </Button>
                        </div>
                      ))}
                      {getAvailableSongs(selectedSetlist).length === 0 && (
-                       <p className="text-sm text-gray-500 text-center py-4">
+                       <p className="text-xs sm:text-sm text-gray-500 text-center py-4">
                          Todas las canciones ya están en este setlist.
                        </p>
                      )}
@@ -955,8 +961,8 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
              </div>
            </div>
           ) : (
-            <div className="text-center py-12 text-gray-500">
-              <p>Selecciona un setlist para ver los detalles</p>
+            <div className="text-center py-8 sm:py-12 text-gray-500 bg-white rounded-lg">
+              <p className="text-sm sm:text-base">Selecciona un setlist para ver los detalles</p>
             </div>
           )}
         </div>
@@ -964,26 +970,32 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
 
       {showDeleteModal && setlistToDelete && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          <div className="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-4">
               Confirmar Eliminación
             </h3>
-            <p className="text-gray-600 mb-6">
+            <p className="text-sm sm:text-base text-gray-600 mb-6">
               ¿Estás seguro de que quieres eliminar el setlist "{setlistToDelete.name}"? Esta acción no se puede deshacer.
             </p>
-            <div className="flex gap-3 justify-end">
+            <div className="flex flex-col sm:flex-row gap-3 justify-end">
               <Button
                 variant="secondary"
                 onClick={() => {
                   setShowDeleteModal(false);
                   setSetlistToDelete(null);
                 }}
+                fullWidth
+                className="sm:w-auto"
+                size="sm"
               >
                 Cancelar
               </Button>
               <Button
                 variant="danger"
                 onClick={confirmDelete}
+                fullWidth
+                className="sm:w-auto"
+                size="sm"
               >
                 Eliminar
               </Button>
@@ -994,11 +1006,11 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
 
       {showDuplicateModal && setlistToDuplicate && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+          <div className="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-4">
               Duplicar Setlist
             </h3>
-            <p className="text-gray-600 mb-4">
+            <p className="text-sm sm:text-base text-gray-600 mb-4">
               Introduce un nombre para el nuevo setlist:
             </p>
             <Input

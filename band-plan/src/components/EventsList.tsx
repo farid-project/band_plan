@@ -383,11 +383,11 @@ export default function EventsList({
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-lg shadow-sm border border-gray-100">
-        <div className="p-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-xl font-semibold text-gray-900">Eventos</h2>
+        <div className="p-3 sm:p-4">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900">Eventos</h2>
             {canManageEvents && (
-              <Button onClick={() => setIsAddModalOpen(true)}>
+              <Button onClick={() => setIsAddModalOpen(true)} size="sm" className="w-full sm:w-auto">
                 Añadir Evento
               </Button>
             )}
@@ -400,17 +400,18 @@ export default function EventsList({
             </div>
           ) : (
             <div className="mt-4">
-              <div className="border-b border-gray-200">
-                <nav className="-mb-px flex space-x-8">
+              <div className="border-b border-gray-200 overflow-x-auto">
+                <nav className="-mb-px flex space-x-4 sm:space-x-8 min-w-max">
                   <button
                     onClick={() => setActiveTab('upcoming')}
                     className={`${
                       activeTab === 'upcoming'
                         ? 'border-indigo-500 text-indigo-600'
                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    } whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
+                    } whitespace-nowrap pb-3 sm:pb-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
                   >
-                    <span>Próximos eventos</span>
+                    <span className="hidden sm:inline">Próximos eventos</span>
+                    <span className="sm:hidden">Próximos</span>
                     {futureEvents.length > 0 && (
                       <span className={`${
                         activeTab === 'upcoming' ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-900'
@@ -425,9 +426,10 @@ export default function EventsList({
                       activeTab === 'past'
                         ? 'border-indigo-500 text-indigo-600'
                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    } whitespace-nowrap pb-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
+                    } whitespace-nowrap pb-3 sm:pb-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
                   >
-                    <span>Eventos pasados</span>
+                    <span className="hidden sm:inline">Eventos pasados</span>
+                    <span className="sm:hidden">Pasados</span>
                     {pastEvents.length > 0 && (
                       <span className={`${
                         activeTab === 'past' ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-900'
@@ -454,9 +456,9 @@ export default function EventsList({
                           className="bg-white rounded-lg shadow-sm border border-gray-100 hover:border-gray-200 transition-colors"
                         >
                           <div className="p-3">
-                            <div className="flex items-center justify-between gap-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-4">
                               <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-3">
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
                                   <div className="flex-shrink-0 w-12 text-center">
                                     <div className="text-lg font-bold text-gray-900">
                                       {format(parseISO(event.date), 'd')}
@@ -469,7 +471,7 @@ export default function EventsList({
                                     <h3 className="text-sm font-medium text-gray-900 truncate">
                                       {event.name}
                                     </h3>
-                                    <div className="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
+                                    <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs text-gray-500 mt-0.5">
                                       <div className="flex items-center">
                                         <Clock className="w-3 h-3 mr-1" />
                                         {format(
@@ -517,20 +519,20 @@ export default function EventsList({
                                 )}
                               </div>
                               {canManageEvents && (
-                                <div className="flex items-center gap-1">
+                                <div className="flex items-center gap-1 mt-2 sm:mt-0">
                                   <button
                                     onClick={() => handleEdit(event)}
                                     className="p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
                                     title="Editar evento"
                                   >
-                                    <Edit2 className="w-4 h-4" />
+                                    <Edit2 className="w-3 h-3 sm:w-4 sm:h-4" />
                                   </button>
                                   <button
                                     onClick={() => handleDelete(event.id)}
                                     className="p-1 text-red-400 hover:text-red-600 rounded-full hover:bg-red-50"
                                     title="Eliminar evento"
                                   >
-                                    <Trash2 className="w-4 h-4" />
+                                    <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
                                   </button>
                                 </div>
                               )}

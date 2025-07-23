@@ -162,17 +162,17 @@ export default function ImportPlaylistModal({
   if (!isAuthenticated) {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-        <div className="bg-white rounded-lg p-6 max-w-md w-full">
+        <div className="bg-white rounded-lg p-4 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Importar Playlist de Spotify</h2>
-            <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+            <h2 className="text-lg sm:text-xl font-semibold">Importar Playlist de Spotify</h2>
+            <button onClick={onClose} className="text-gray-500 hover:text-gray-700 p-1">
               <X className="w-5 h-5" />
             </button>
           </div>
-          <div className="text-center py-8">
-            <Music className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-600 mb-4">Necesitas conectar con Spotify para importar playlists</p>
-            <Button onClick={onClose} variant="primary">
+          <div className="text-center py-6 sm:py-8">
+            <Music className="w-12 h-12 sm:w-16 sm:h-16 text-gray-300 mx-auto mb-4" />
+            <p className="text-sm sm:text-base text-gray-600 mb-4">Necesitas conectar con Spotify para importar playlists</p>
+            <Button onClick={onClose} variant="primary" size="sm" className="w-full sm:w-auto">
               Entendido
             </Button>
           </div>
@@ -184,54 +184,57 @@ export default function ImportPlaylistModal({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden">
-        <div className="flex justify-between items-center p-6 border-b">
-          <h2 className="text-xl font-semibold">Importar Playlist de Spotify</h2>
+        <div className="flex justify-between items-center p-4 sm:p-6 border-b">
+          <h2 className="text-lg sm:text-xl font-semibold">Importar Playlist de Spotify</h2>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700"
+            className="text-gray-500 hover:text-gray-700 p-1"
             disabled={importing}
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-160px)]">
+        <div className="p-3 sm:p-6 overflow-y-auto max-h-[calc(90vh-160px)]">
           {!selectedPlaylist ? (
             <div>
-              <p className="text-gray-600 mb-4">
+              <p className="text-sm sm:text-base text-gray-600 mb-4">
                 Selecciona una playlist de Spotify para importar como setlist:
               </p>
               
               {loading ? (
                 <div className="flex items-center justify-center py-8">
-                  <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-                  <span className="ml-2 text-gray-600">Cargando playlists...</span>
+                  <Loader2 className="w-6 h-6 sm:w-8 sm:h-8 animate-spin text-green-500" />
+                  <span className="ml-2 text-sm sm:text-base text-gray-600">Cargando playlists...</span>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                   {playlists.map((playlist) => (
                     <div
                       key={playlist.id}
                       onClick={() => setSelectedPlaylist(playlist)}
-                      className="border border-gray-200 rounded-lg p-4 cursor-pointer hover:border-green-400 hover:bg-green-50 transition-colors"
+                      className="border border-gray-200 rounded-lg p-3 sm:p-4 cursor-pointer hover:border-green-400 hover:bg-green-50 hover:shadow-md transition-all duration-200"
                     >
                       <div className="flex items-start gap-3">
                         {playlist.images && playlist.images.length > 0 ? (
                           <img
                             src={playlist.images[0].url}
                             alt={playlist.name}
-                            className="w-16 h-16 rounded object-cover flex-shrink-0"
+                            className="w-12 h-12 sm:w-16 sm:h-16 rounded object-cover flex-shrink-0"
                           />
                         ) : (
-                          <div className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center flex-shrink-0">
-                            <Music className="w-8 h-8 text-gray-400" />
+                          <div className="w-12 h-12 sm:w-16 sm:h-16 bg-gray-200 rounded flex items-center justify-center flex-shrink-0">
+                            <Music className="w-6 h-6 sm:w-8 sm:h-8 text-gray-400" />
                           </div>
                         )}
                         <div className="flex-1 min-w-0">
-                          <h4 className="font-medium text-gray-900 truncate">{playlist.name}</h4>
+                          <h4 className="font-medium text-sm sm:text-base text-gray-900 truncate">{playlist.name}</h4>
                           {playlist.description && (
-                            <p className="text-sm text-gray-500 mt-1 line-clamp-2">{playlist.description}</p>
+                            <p className="text-xs sm:text-sm text-gray-500 mt-1 line-clamp-2">{playlist.description}</p>
                           )}
+                          <p className="text-xs text-gray-400 mt-1">
+                            {playlist.tracks.total} canciones
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -241,35 +244,36 @@ export default function ImportPlaylistModal({
             </div>
           ) : (
             <div>
-              <div className="flex items-center gap-3 mb-6">
+              <div className="flex flex-col sm:flex-row sm:items-start gap-3 mb-4 sm:mb-6">
                 <button
                   onClick={() => {
                     setSelectedPlaylist(null);
                     setPlaylistTracks([]);
                     setCustomName('');
                   }}
-                  className="text-blue-600 hover:text-blue-800"
+                  className="text-blue-600 hover:text-blue-800 text-sm sm:text-base self-start"
                   disabled={importing}
                 >
                   ← Volver a playlists
                 </button>
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold">{selectedPlaylist.name}</h3>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-base sm:text-lg font-semibold truncate">{selectedPlaylist.name}</h3>
                   {selectedPlaylist.description && (
-                    <p className="text-sm text-gray-600">{selectedPlaylist.description}</p>
+                    <p className="text-xs sm:text-sm text-gray-600 mt-1 line-clamp-2">{selectedPlaylist.description}</p>
                   )}
                 </div>
                 <a
                   href={selectedPlaylist.external_urls.spotify}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-green-600 hover:text-green-800"
+                  className="text-green-600 hover:text-green-800 p-1"
+                  title="Abrir en Spotify"
                 >
-                  <ExternalLink className="w-5 h-5" />
+                  <ExternalLink className="w-4 h-4 sm:w-5 sm:h-5" />
                 </a>
               </div>
 
-              <div className="mb-6">
+              <div className="mb-4 sm:mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Nombre del setlist
                 </label>
@@ -277,7 +281,7 @@ export default function ImportPlaylistModal({
                   type="text"
                   value={customName}
                   onChange={(e) => setCustomName(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
                   placeholder="Nombre para el nuevo setlist"
                   disabled={importing}
                 />
@@ -285,33 +289,35 @@ export default function ImportPlaylistModal({
 
               {loading ? (
                 <div className="flex items-center justify-center py-8">
-                  <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-                  <span className="ml-2 text-gray-600">Cargando canciones...</span>
+                  <Loader2 className="w-6 h-6 sm:w-8 sm:h-8 animate-spin text-green-500" />
+                  <span className="ml-2 text-sm sm:text-base text-gray-600">Cargando canciones...</span>
                 </div>
               ) : (
                 <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <p className="text-sm text-gray-600">
-                      {playlistTracks.length} canciones • Duración total: {getTotalDuration()}
-                    </p>
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                    <div className="bg-gray-50 rounded-lg px-3 py-2">
+                      <p className="text-xs sm:text-sm text-gray-600 font-medium">
+                        {playlistTracks.length} canciones • {getTotalDuration()}
+                      </p>
+                    </div>
                   </div>
                   
-                  <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
+                  <div className="max-h-64 sm:max-h-96 overflow-y-auto border border-gray-200 rounded-lg bg-gray-50">
                     {playlistTracks.map((track, index) => (
-                      <div key={track.id} className="flex items-center gap-3 p-3 border-b border-gray-100 last:border-b-0">
-                        <span className="text-sm text-gray-500 w-8">{index + 1}</span>
+                      <div key={track.id} className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 bg-white border-b border-gray-100 last:border-b-0 hover:bg-gray-50 transition-colors">
+                        <span className="text-xs sm:text-sm text-gray-500 w-6 sm:w-8 text-center">{index + 1}</span>
                         <img
                           src={track.album.images[2]?.url || track.album.images[0]?.url}
                           alt={track.album.name}
-                          className="w-10 h-10 rounded object-cover"
+                          className="w-8 h-8 sm:w-10 sm:h-10 rounded object-cover flex-shrink-0"
                         />
                         <div className="flex-1 min-w-0">
-                          <h4 className="font-medium text-gray-900 truncate">{track.name}</h4>
-                          <p className="text-sm text-gray-600 truncate">
+                          <h4 className="font-medium text-xs sm:text-sm text-gray-900 truncate">{track.name}</h4>
+                          <p className="text-xs text-gray-600 truncate">
                             {track.artists.map(artist => artist.name).join(', ')}
                           </p>
                         </div>
-                        <div className="flex items-center text-sm text-gray-500">
+                        <div className="flex items-center text-xs sm:text-sm text-gray-500 flex-shrink-0">
                           <Clock className="w-3 h-3 mr-1" />
                           {formatDuration(track.duration_ms)}
                         </div>
@@ -324,27 +330,27 @@ export default function ImportPlaylistModal({
           )}
         </div>
 
-        <div className="border-t p-6">
+        <div className="border-t p-3 sm:p-6">
           {importing ? (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">
+                <span className="text-xs sm:text-sm text-gray-600">
                   Importando canciones... {importProgress}%
                 </span>
-                <span className="text-sm text-gray-500">
+                <span className="text-xs sm:text-sm text-gray-500">
                   {Math.round((importProgress / 100) * playlistTracks.length)}/{playlistTracks.length}
                 </span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div 
-                  className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                  className="bg-green-500 h-2 rounded-full transition-all duration-300"
                   style={{ width: `${importProgress}%` }}
                 />
               </div>
             </div>
           ) : (
-            <div className="flex justify-end gap-3">
-              <Button variant="secondary" onClick={onClose}>
+            <div className="flex flex-col sm:flex-row justify-end gap-3">
+              <Button variant="secondary" onClick={onClose} size="sm" className="w-full sm:w-auto">
                 Cancelar
               </Button>
               {selectedPlaylist && playlistTracks.length > 0 && (
@@ -352,9 +358,12 @@ export default function ImportPlaylistModal({
                   variant="primary" 
                   onClick={importPlaylistAsSetlist}
                   disabled={!customName.trim()}
+                  size="sm"
+                  className="w-full sm:w-auto"
                 >
                   <Download className="w-4 h-4 mr-2" />
-                  Importar {playlistTracks.length} canciones
+                  <span className="hidden sm:inline">Importar {playlistTracks.length} canciones</span>
+                  <span className="sm:hidden">Importar ({playlistTracks.length})</span>
                 </Button>
               )}
             </div>

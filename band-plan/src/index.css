@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Mobile-first responsive utilities */
+@layer utilities {
+  .touch-manipulation {
+    touch-action: manipulation;
+  }
+  
+  .tap-highlight-transparent {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
 
 @media print {
   h1 {
@@ -18,10 +29,16 @@
 
 /* DayPicker custom styles */
 .rdp {
-  --rdp-cell-size: 50px !important;
+  --rdp-cell-size: 40px !important;
   --rdp-accent-color: rgb(79 70 229) !important;
   --rdp-background-color: rgb(238 242 255) !important;
   margin: 0 !important;
+}
+
+@media (min-width: 640px) {
+  .rdp {
+    --rdp-cell-size: 50px !important;
+  }
 }
 
 .rdp-months {

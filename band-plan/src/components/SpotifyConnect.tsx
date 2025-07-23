@@ -61,30 +61,31 @@ const SpotifyConnect: React.FC<SpotifyConnectProps> = ({ className = '', compact
     }
 
     return (
-      <div className={`bg-gradient-to-r from-green-50 to-green-100 p-6 rounded-lg border border-green-200 ${className}`}>
-        <div className="flex items-start gap-4">
-          <div className="bg-green-500 p-3 rounded-full">
-            <Music className="w-6 h-6 text-white" />
+      <div className={`bg-gradient-to-r from-green-50 to-green-100 p-4 sm:p-6 rounded-lg border border-green-200 ${className}`}>
+        <div className="flex flex-col sm:flex-row items-start gap-4">
+          <div className="bg-green-500 p-2 sm:p-3 rounded-full flex-shrink-0">
+            <Music className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
           </div>
-          <div className="flex-1">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+          <div className="flex-1 min-w-0">
+            <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2">
               Conecta con Spotify
             </h3>
-            <p className="text-gray-600 mb-4">
+            <p className="text-sm sm:text-base text-gray-600 mb-4">
               Conecta tu cuenta de Spotify para acceder a funciones avanzadas como búsqueda de canciones, 
               creación automática de playlists, y reproducción de previews.
             </p>
-            <ul className="text-sm text-gray-600 mb-4 space-y-1">
+            <ul className="text-xs sm:text-sm text-gray-600 mb-4 space-y-1">
               <li>• Búsqueda automática de canciones con datos completos</li>
               <li>• Crear playlists automáticamente desde tus setlists</li>
               <li>• Reproducir previews de canciones</li>
               <li>• Control de reproducción desde la app</li>
             </ul>
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <Button
                 onClick={login}
                 variant="primary"
-                className="bg-green-500 hover:bg-green-600 text-white"
+                className="bg-green-500 hover:bg-green-600 text-white w-full sm:w-auto"
+                size="sm"
               >
                 <Music className="w-4 h-4 mr-2" />
                 Conectar con Spotify
@@ -92,8 +93,9 @@ const SpotifyConnect: React.FC<SpotifyConnectProps> = ({ className = '', compact
               <Button
                 onClick={handleRefresh}
                 variant="secondary"
-                className="text-blue-600 hover:text-blue-800"
+                className="text-blue-600 hover:text-blue-800 w-full sm:w-auto"
                 title="Actualizar estado de autenticación"
+                size="sm"
               >
                 <RotateCcw className="w-4 h-4 mr-2" />
                 Refrescar
@@ -101,8 +103,9 @@ const SpotifyConnect: React.FC<SpotifyConnectProps> = ({ className = '', compact
               <Button
                 onClick={handleResetSpotify}
                 variant="secondary"
-                className="text-gray-600 hover:text-gray-800"
+                className="text-gray-600 hover:text-gray-800 w-full sm:w-auto"
                 title="Limpiar estado de Spotify si hay problemas"
+                size="sm"
               >
                 <RotateCcw className="w-4 h-4 mr-2" />
                 Reset
@@ -138,26 +141,26 @@ const SpotifyConnect: React.FC<SpotifyConnectProps> = ({ className = '', compact
   }
 
   return (
-    <div className={`bg-gradient-to-r from-green-50 to-green-100 p-4 rounded-lg border border-green-200 ${className}`}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="bg-green-500 p-2 rounded-full">
-            <Music className="w-5 h-5 text-white" />
+    <div className={`bg-gradient-to-r from-green-50 to-green-100 p-3 sm:p-4 rounded-lg border border-green-200 ${className}`}>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+          <div className="bg-green-500 p-2 rounded-full flex-shrink-0">
+            <Music className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
           </div>
-          <div>
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               {user?.images?.[0] && (
                 <img 
                   src={user.images[0].url} 
                   alt={user.display_name} 
-                  className="w-6 h-6 rounded-full"
+                  className="w-5 h-5 sm:w-6 sm:h-6 rounded-full flex-shrink-0"
                 />
               )}
-              <span className="font-medium text-gray-900">
+              <span className="font-medium text-sm sm:text-base text-gray-900 truncate">
                 Conectado como {user?.display_name}
               </span>
             </div>
-            <p className="text-sm text-gray-600">
+            <p className="text-xs sm:text-sm text-gray-600">
               Spotify conectado correctamente
             </p>
           </div>
@@ -166,6 +169,7 @@ const SpotifyConnect: React.FC<SpotifyConnectProps> = ({ className = '', compact
           onClick={logout}
           variant="secondary"
           size="sm"
+          className="w-full sm:w-auto"
         >
           <LogOut className="w-4 h-4 mr-2" />
           Desconectar
