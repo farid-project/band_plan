@@ -275,10 +275,10 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
       <div className="divide-y">
         {groupMembers.map((member) => (
           <div key={member.id} className="p-3 hover:bg-gray-50">
-            <div className="flex items-start justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-medium text-gray-900">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-medium text-gray-900 text-sm sm:text-base">
                     {member.name}
                   </h3>
                   <span className={`text-xs px-2 py-0.5 rounded-full ${
@@ -345,14 +345,14 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
                   </button>
                 )}
               </div>
-              <div className="flex items-center gap-2 ml-4">
+              <div className="flex items-center gap-2 ml-2 sm:ml-4">
                 {(userRole === 'admin' || member.user_id === user?.id) && (
                   <button
                     onClick={() => handleEditMember(member)}
                     className="p-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
                     title="Editar miembro"
                   >
-                    <Edit2 className="w-4 h-4" />
+                    <Edit2 className="w-3 h-3 sm:w-4 sm:h-4" />
                   </button>
                 )}
                 {(userRole === 'admin' || isPrincipalMember) && (
@@ -361,7 +361,7 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
                     className="p-1 text-red-400 hover:text-red-600 rounded-full hover:bg-red-50"
                     title="Eliminar miembro"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
                   </button>
                 )}
               </div>
@@ -489,36 +489,39 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
   }
 
   return (
-    <div className="max-w-7xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{group.name}</h1>
-          <p className="text-gray-500 mt-1">Gestiona miembros y disponibilidad</p>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 gap-4">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 truncate">{group.name}</h1>
+          <p className="text-gray-500 mt-1 text-sm sm:text-base">Gestiona miembros y disponibilidad</p>
         </div>
         {(canAddMembers || isPrincipalMember) && (!isUserMember || userRole === 'admin' || isPrincipalMember) && (
           <Button
             onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center space-x-2"
+            className="flex items-center justify-center space-x-2 w-full sm:w-auto"
+            size="sm"
           >
-            <Plus className="w-5 h-5" />
-            <span>{userRole === 'admin' || isPrincipalMember ? 'Añadir Miembro' : 'Unirse al Grupo'}</span>
+            <Plus className="w-4 h-4 sm:w-5 sm:h-5" />
+            <span className="hidden sm:inline">{userRole === 'admin' || isPrincipalMember ? 'Añadir Miembro' : 'Unirse al Grupo'}</span>
+            <span className="sm:hidden">Añadir</span>
           </Button>
         )}
       </div>
 
       {/* Navigation Tabs */}
-      <div className="border-b border-gray-200 mb-6">
-        <nav className="-mb-px flex space-x-8">
+      <div className="border-b border-gray-200 mb-6 overflow-x-auto">
+        <nav className="-mb-px flex space-x-4 sm:space-x-8 min-w-max">
           <button
             onClick={() => handleTabChange('overview')}
             className={`${
               activeTab === 'overview'
                 ? 'border-indigo-500 text-indigo-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
+            } whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-1 sm:space-x-2`}
           >
-            <Calendar className="w-4 h-4" />
-            <span>Vista General</span>
+            <Calendar className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Vista General</span>
+            <span className="sm:hidden">Vista</span>
           </button>
           <button
             onClick={() => handleTabChange('songs')}
@@ -526,10 +529,11 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
               activeTab === 'songs' || activeTab === 'setlists'
                 ? 'border-indigo-500 text-indigo-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
+            } whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-1 sm:space-x-2`}
           >
-            <ListMusic className="w-4 h-4" />
-            <span>Canciones y Setlists</span>
+            <ListMusic className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Canciones y Setlists</span>
+            <span className="sm:hidden">Música</span>
           </button>
         </nav>
       </div>
@@ -537,11 +541,11 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
       {/* Tab Content */}
       {activeTab === 'overview' && (
         <>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
             {/* Members List */}
             <div className="bg-white rounded-lg shadow-md">
-              <div className="p-4 border-b">
-                <h2 className="text-lg font-semibold">Miembros del Grupo</h2>
+              <div className="p-3 sm:p-4 border-b">
+                <h2 className="text-base sm:text-lg font-semibold">Miembros del Grupo</h2>
               </div>
               {members.length === 0 ? (
                 <div className="text-center py-8">
@@ -560,10 +564,10 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
 
             {/* Availability Calendar */}
             <div className="bg-white rounded-lg shadow-md">
-              <div className="p-4 border-b">
-                <h2 className="text-lg font-semibold">Disponibilidad</h2>
+              <div className="p-3 sm:p-4 border-b">
+                <h2 className="text-base sm:text-lg font-semibold">Disponibilidad</h2>
               </div>
-              <div className="p-4">
+              <div className="p-2 sm:p-4">
                 <AvailabilityCalendar 
                   members={members} 
                   onAvailableDatesChange={setAvailableDates}

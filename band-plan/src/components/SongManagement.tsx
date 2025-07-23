@@ -476,15 +476,17 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
                 </span>
                 
                 {/* Mini Filters */}
-                <div className="flex items-center gap-2 text-xs">
-                  <Search className="w-3 h-3 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Buscar..."
-                    value={searchText}
-                    onChange={(e) => setSearchText(e.target.value)}
-                    className="w-24 px-2 py-1 border border-gray-200 rounded text-xs focus:outline-none focus:border-blue-400 focus:w-32 transition-all"
-                  />
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <div className="flex items-center gap-1">
+                    <Search className="w-3 h-3 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Buscar..."
+                      value={searchText}
+                      onChange={(e) => setSearchText(e.target.value)}
+                      className="w-20 sm:w-24 px-2 py-1 border border-gray-200 rounded text-xs focus:outline-none focus:border-blue-400 focus:w-28 sm:focus:w-32 transition-all"
+                    />
+                  </div>
                   <select
                     value={filterKey}
                     onChange={(e) => setFilterKey(e.target.value)}

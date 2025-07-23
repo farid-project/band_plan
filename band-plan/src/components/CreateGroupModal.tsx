@@ -64,7 +64,7 @@ const CreateGroupModal = ({
       <div className="flex min-h-screen items-center justify-center">
         <div className="fixed inset-0 bg-black opacity-30" />
 
-        <div className="relative bg-white rounded-lg w-full max-w-md p-6 mx-4">
+        <div className="relative bg-white rounded-lg w-full max-w-md p-4 sm:p-6 mx-4 max-h-[90vh] overflow-y-auto">
           <div className="absolute right-4 top-4">
             <button
               onClick={onClose}
@@ -97,16 +97,18 @@ const CreateGroupModal = ({
               />
             </div>
 
-            <div className="flex justify-end gap-3">
+            <div className="flex flex-col sm:flex-row justify-end gap-3">
               <Button
                 type="button"
                 variant="secondary"
                 onClick={onClose}
                 disabled={loading}
+                fullWidth
+                className="sm:w-auto"
               >
                 Cancelar
               </Button>
-              <Button type="submit" loading={loading}>
+              <Button type="submit" loading={loading} fullWidth className="sm:w-auto">
                 Crear Grupo
               </Button>
             </div>
