@@ -8,7 +8,15 @@ export async function updateGroupCalendar(groupId: string, memberId: string) {
         p_member_id: memberId
       });
 
-    if (calendarError) throw calendarError;
+    if (calendarError) {
+      console.error('Error en RPC get_group_calendar:', calendarError);
+      // Si el error es de permisos RLS, registrarlo pero no bloquear
+      if (calendarError.code === '42501') {
+        console.warn('Error de permisos RLS en calendarios, continuando sin generar calendario');
+        return;
+      }
+      throw calendarError;
+    }
     if (!calendarData) throw new Error('No se pudo generar el calendario');
 
     const finalCalendarData = calendarData.endsWith('\r\n') 

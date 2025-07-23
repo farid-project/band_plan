@@ -8,6 +8,7 @@ import { useAuthStore } from '../store/authStore';
 import { toast } from 'react-hot-toast';
 import CreateGroupModal from '../components/CreateGroupModal';
 import DeleteGroupModal from '../components/DeleteGroupModal';
+import { CardSkeleton } from '../components/Skeleton';
 
 interface GroupWithRole extends Group {
   userRole: 'creator' | 'member' | 'none';
@@ -198,8 +199,12 @@ export default function Dashboard() {
       </div>
 
       {loading ? (
-        <div className="text-center py-8 text-gray-500">
-          Cargando grupos...
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <div className="h-7 w-48 bg-gray-200 animate-pulse rounded"></div>
+            <div className="h-10 w-32 bg-gray-200 animate-pulse rounded"></div>
+          </div>
+          <CardSkeleton count={6} />
         </div>
       ) : groups.length === 0 ? (
         <div className="text-center py-8">

@@ -9,6 +9,8 @@ import EventModal from './EventModal';
 import { safeSupabaseRequest } from '../lib/supabaseUtils';
 import { updateGroupCalendar } from '../utils/calendarSync';
 import SetlistPreviewModal from './SetlistPreviewModal';
+import { useRealtimeSubscription } from '../hooks/useRealtimeSubscription';
+import { EventSkeleton } from './Skeleton';
 
 
 interface EventsListProps {
@@ -49,6 +51,24 @@ export default function EventsList({
   useEffect(() => {
     fetchEvents();
   }, [groupId]);
+
+  // Real-time subscription for events
+  useRealtimeSubscription({
+    table: 'events',
+    filter: `group_id=eq.${groupId}`,
+    onInsert: () => {
+      fetchEvents(); // Refetch to get full data with members
+      toast.success('Nuevo evento añadido en tiempo real');
+    },
+    onUpdate: () => {
+      fetchEvents(); // Refetch to get updated data
+    },
+    onDelete: (payload) => {
+      setEvents(prev => prev.filter(event => event.id !== (payload.old as { id: string }).id));
+      toast.success('Evento eliminado en tiempo real');
+    },
+    enabled: !!groupId
+  });
 
   const fetchEvents = async () => {
     try {
@@ -219,7 +239,19 @@ export default function EventsList({
   };
 
   if (loading) {
-    return <div className="text-center py-4">Cargando eventos...</div>;
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <div className="h-8 w-32 bg-gray-200 animate-pulse rounded"></div>
+          <div className="h-10 w-36 bg-gray-200 animate-pulse rounded"></div>
+        </div>
+        <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
+          <div className="h-10 w-24 bg-gray-200 animate-pulse rounded"></div>
+          <div className="h-10 w-24 bg-gray-200 animate-pulse rounded"></div>
+        </div>
+        <EventSkeleton count={4} />
+      </div>
+    );
   }
 
   const groupEventsByMonth = (eventsToGroup: EventWithMembers[]) => {
