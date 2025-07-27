@@ -1,3 +1,7 @@
+// Agregar estos imports al inicio del archivo
+import { supabase } from '../lib/supabase';
+import { useAuthStore } from '../store/authStore';
+
 export interface SpotifyTrack {
   id: string;
   name: string;
@@ -60,8 +64,11 @@ class SpotifyService {
   private isProcessingAuth: boolean = false;
 
   constructor() {
-    // Load tokens from localStorage on initialization
+    // Load tokens from storage on initialization
     this.loadTokensFromStorage();
+    
+    // Subscribe to auth changes
+    this.subscribeToAuthChanges();
     
     // Debug: Log configuration
     console.log('🎵 Spotify Service Config:', {
@@ -394,15 +401,20 @@ class SpotifyService {
     return !!(this.accessToken && this.tokenExpiry && Date.now() < this.tokenExpiry);
   }
 
-  logout(): void {
+  async logout(): Promise<void> {
     this.accessToken = null;
     this.refreshToken = null;
     this.tokenExpiry = null;
     this.isProcessingAuth = false;
-    this.clearTokensFromStorage();
+    
+    // Clear from both localStorage and Supabase
+    await this.clearTokensFromStorage();
+    
     localStorage.removeItem('spotify_auth_state');
     localStorage.removeItem('spotify_code_verifier');
     localStorage.removeItem('spotify_return_url');
+    
+    console.log('✅ Spotify logout completed - tokens cleared from all sources');
   }
 
   // Clear auth state manually (useful for error recovery)
@@ -429,7 +441,73 @@ class SpotifyService {
     return values.reduce((acc, x) => acc + possible[x % possible.length], '');
   }
 
-  private saveTokensToStorage(): void {
+  // Modificar los métodos de almacenamiento
+  private async saveTokensToStorage(): Promise<void> {
+    const { user } = useAuthStore.getState();
+    
+    if (!user) {
+      // Fallback a localStorage si no hay usuario autenticado
+      this.saveTokensToLocalStorage();
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('spotify_tokens')
+        .upsert({
+          user_id: user.id,
+          access_token: this.accessToken,
+          refresh_token: this.refreshToken,
+          expires_at: new Date(this.tokenExpiry!).toISOString()
+        });
+
+      if (error) throw error;
+      console.log('✅ Spotify tokens saved to database');
+    } catch (error) {
+      console.error('Error saving tokens to database:', error);
+      // Fallback a localStorage
+      this.saveTokensToLocalStorage();
+    }
+  }
+
+  private async loadTokensFromStorage(): Promise<void> {
+    const { user } = useAuthStore.getState();
+    
+    if (!user) {
+      // Cargar desde localStorage si no hay usuario
+      this.loadTokensFromLocalStorage();
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('spotify_tokens')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error || !data) {
+        // No hay tokens en la base de datos, intentar localStorage
+        this.loadTokensFromLocalStorage();
+        return;
+      }
+
+      this.accessToken = data.access_token;
+      this.refreshToken = data.refresh_token;
+      this.tokenExpiry = new Date(data.expires_at).getTime();
+      
+      // También guardar en localStorage para acceso rápido
+      this.saveTokensToLocalStorage();
+      
+      console.log('✅ Spotify tokens loaded from database');
+    } catch (error) {
+      console.error('Error loading tokens from database:', error);
+      this.loadTokensFromLocalStorage();
+    }
+  }
+
+  // Métodos auxiliares para localStorage (como fallback)
+  private saveTokensToLocalStorage(): void {
     console.log('🎵 SpotifyService: Saving tokens to storage...', {
       hasAccessToken: !!this.accessToken,
       hasRefreshToken: !!this.refreshToken,
@@ -465,17 +543,113 @@ class SpotifyService {
     });
   }
 
-  private loadTokensFromStorage(): void {
+  private loadTokensFromLocalStorage(): void {
     this.accessToken = localStorage.getItem('spotify_access_token');
     this.refreshToken = localStorage.getItem('spotify_refresh_token');
     const expiry = localStorage.getItem('spotify_token_expiry');
     this.tokenExpiry = expiry ? parseInt(expiry) : null;
   }
 
-  private clearTokensFromStorage(): void {
+  private async clearTokensFromStorage(): Promise<void> {
+    // Clear from localStorage
     localStorage.removeItem('spotify_access_token');
     localStorage.removeItem('spotify_refresh_token');
     localStorage.removeItem('spotify_token_expiry');
+    
+    // Clear from Supabase if user is authenticated
+    const { user } = useAuthStore.getState();
+    
+    if (user) {
+      try {
+        const { error } = await supabase
+          .from('spotify_tokens')
+          .delete()
+          .eq('user_id', user.id);
+          
+        if (error) {
+          console.error('Error deleting Spotify tokens from database:', error);
+        } else {
+          console.log('✅ Spotify tokens deleted from database');
+        }
+      } catch (error) {
+        console.error('Error clearing Spotify tokens from database:', error);
+      }
+    }
+  }
+
+  // Subscription to auth changes for real-time sync
+  private subscribeToAuthChanges(): void {
+    // Listen for auth state changes
+    useAuthStore.subscribe((state) => {
+      if (state.user && !this.accessToken) {
+        // User logged in and we don't have tokens, try to load them
+        this.loadTokensFromStorage();
+      } else if (!state.user && this.accessToken) {
+        // User logged out, clear tokens
+        this.logout();
+      }
+    });
+  }
+
+  // Method to manually refresh tokens from database (for cross-device sync)
+  async refreshTokensFromDatabase(): Promise<boolean> {
+    const { user } = useAuthStore.getState();
+    
+    if (!user) return false;
+
+    // Don't refresh if user has explicitly logged out
+    if (!this.accessToken && 
+        !localStorage.getItem('spotify_access_token')) {
+      console.log('🎵 User appears to have logged out, skipping database refresh');
+      return false;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('spotify_tokens')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error || !data) {
+        // No tokens in database, respect local logout state
+        return false;
+      }
+
+      const dbTokenExpiry = new Date(data.expires_at).getTime();
+      
+      // Only update if database has newer or different tokens
+      if (!this.accessToken || 
+          data.access_token !== this.accessToken || 
+          dbTokenExpiry !== this.tokenExpiry) {
+        
+        const wasAuthenticated = this.isAuthenticated();
+        
+        this.accessToken = data.access_token;
+        this.refreshToken = data.refresh_token;
+        this.tokenExpiry = dbTokenExpiry;
+        
+        // Also save to localStorage
+        this.saveTokensToLocalStorage();
+        
+        console.log('✅ Spotify tokens refreshed from database');
+        
+        // Only dispatch event if authentication state actually changed
+        if (!wasAuthenticated && this.isAuthenticated()) {
+          console.log('🎵 Authentication state changed, dispatching event');
+          window.dispatchEvent(new CustomEvent('spotifyAuthCompleted'));
+        } else {
+          console.log('🎵 Tokens updated but auth state unchanged, no event dispatched');
+        }
+        
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Error refreshing tokens from database:', error);
+      return false;
+    }
   }
 }
 

@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://vrzgwnchqdxwgennshmu.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZyemd3bmNocWR4d2dlbm5zaG11Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzE1NTEzMzYsImV4cCI6MjA0NzEyNzMzNn0.U8KLDcO9sabudduU9xTFgmbwDBmgULvH0jKY9QN0eeE';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
@@ -9,6 +9,6 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     persistSession: true,
     detectSessionInUrl: true,
     flowType: 'pkce',
-    redirectTo: 'https://nimble-alfajores-99f196.netlify.app'
+    redirectTo: window.location.origin
   }
 });

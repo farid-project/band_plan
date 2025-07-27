@@ -21,28 +21,24 @@ export const useSpotify = (): UseSpotifyReturn => {
   const [user, setUser] = useState<SpotifyUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [initialized, setInitialized] = useState(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(false);
 
   // Check authentication status on mount only once
   useEffect(() => {
     if (initialized) return;
     
     const checkAuthStatus = async () => {
+      if (isCheckingAuth) {
+        console.log('🎵 Already checking auth, skipping...');
+        return;
+      }
+      
+      setIsCheckingAuth(true);
       try {
         console.log('🎵 Checking Spotify auth status...');
         
-        // Debug localStorage tokens
-        const accessToken = localStorage.getItem('spotify_access_token');
-        const refreshToken = localStorage.getItem('spotify_refresh_token');
-        const tokenExpiry = localStorage.getItem('spotify_token_expiry');
-        
-        console.log('🎵 LocalStorage tokens:', {
-          hasAccessToken: !!accessToken,
-          hasRefreshToken: !!refreshToken,
-          tokenExpiry,
-          isExpired: tokenExpiry ? Date.now() >= parseInt(tokenExpiry) : 'no expiry',
-          accessTokenLength: accessToken?.length,
-          currentTime: Date.now()
-        });
+        // Try to refresh tokens from database first (for cross-device sync)
+        await spotifyService.refreshTokensFromDatabase();
         
         console.log('🎵 Is authenticated:', spotifyService.isAuthenticated());
         
@@ -52,15 +48,19 @@ export const useSpotify = (): UseSpotifyReturn => {
           console.log('🎵 User data:', userData);
           setUser(userData);
           setIsAuthenticated(true);
+        } else {
+          setUser(null);
+          setIsAuthenticated(false);
         }
       } catch (error) {
         console.error('❌ Error checking Spotify auth status:', error);
-        spotifyService.logout();
+        await spotifyService.logout();
         setIsAuthenticated(false);
         setUser(null);
       } finally {
         setLoading(false);
         setInitialized(true);
+        setIsCheckingAuth(false);
       }
     };
 
@@ -70,16 +70,27 @@ export const useSpotify = (): UseSpotifyReturn => {
   // Listen for spotify auth events
   useEffect(() => {
     const handleSpotifyAuth = async () => {
+      if (isCheckingAuth) {
+        console.log('🎵 Already checking auth, ignoring event...');
+        return;
+      }
+      
       console.log('🎵 useSpotify: Received Spotify auth event, refreshing status...');
+      setIsCheckingAuth(true);
+      
       try {
         console.log('🎵 useSpotify: Checking if authenticated:', spotifyService.isAuthenticated());
         if (spotifyService.isAuthenticated()) {
-          console.log('🎵 useSpotify: Getting current user...');
-          const userData = await spotifyService.getCurrentUser();
-          console.log('🎵 useSpotify: User data received:', userData?.display_name);
-          setUser(userData);
-          setIsAuthenticated(true);
-          console.log('🎵 useSpotify: Auth state updated - authenticated');
+          // Only fetch user data if we don't have it or it's different
+          if (!user || !isAuthenticated) {
+            console.log('🎵 useSpotify: Getting current user...');
+            const userData = await spotifyService.getCurrentUser();
+            console.log('🎵 useSpotify: User data received:', userData?.display_name);
+            setUser(userData);
+            setIsAuthenticated(true);
+          } else {
+            console.log('🎵 useSpotify: User already set, skipping fetch');
+          }
         } else {
           console.log('🎵 useSpotify: Not authenticated, clearing state');
           setIsAuthenticated(false);
@@ -87,9 +98,11 @@ export const useSpotify = (): UseSpotifyReturn => {
         }
       } catch (error) {
         console.error('❌ useSpotify: Error refreshing Spotify auth status:', error);
-        spotifyService.logout();
+        await spotifyService.logout();
         setIsAuthenticated(false);
         setUser(null);
+      } finally {
+        setIsCheckingAuth(false);
       }
     };
 
@@ -117,8 +130,8 @@ export const useSpotify = (): UseSpotifyReturn => {
     }
   }, []);
 
-  const logout = useCallback(() => {
-    spotifyService.logout();
+  const logout = useCallback(async () => {
+    await spotifyService.logout();
     setIsAuthenticated(false);
     setUser(null);
     toast.success('Desconectado de Spotify');
