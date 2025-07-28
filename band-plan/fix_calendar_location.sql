@@ -1,3 +1,4 @@
+-- Fix location field parsing in get_group_calendar function
 CREATE OR REPLACE FUNCTION public.get_group_calendar(
   p_group_id UUID,
   p_member_id UUID
@@ -87,5 +88,5 @@ BEGIN
 END;
 $$;
 
--- Dar permisos de ejecución
+-- Grant execution permissions
 GRANT EXECUTE ON FUNCTION public.get_group_calendar(UUID, UUID) TO authenticated;

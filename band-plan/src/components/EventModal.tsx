@@ -387,9 +387,6 @@ export default function EventModal({
             .toISOString()
             .replace('Z', formatTimezoneOffset(offset));
           
-          console.log('Zona horaria local:', Intl.DateTimeFormat().resolvedOptions().timeZone);
-          console.log('Fecha local:', localDate.toString());
-          console.log('Fecha con offset local:', localISOString);
           
           return localISOString;
         })(),
@@ -452,24 +449,20 @@ export default function EventModal({
         }
 
         // Actualizar calendarios
-        console.log('Actualizando calendarios para miembros:', selectedMembers);
         try {
           await Promise.all(
             selectedMembers
               .filter(member => member.selected && member.sync_calendar && member.userId)
               .map(async (member) => {
-                console.log('Actualizando calendario para miembro:', member);
                 try {
                   return await updateGroupCalendar(groupId, member.memberId);
                 } catch (calendarError) {
-                  console.warn('Error al actualizar calendario para miembro:', member.memberId, calendarError);
                   // No lanzar el error para que no bloquee la creación del evento
                   return null;
                 }
               })
           );
         } catch (calendarError) {
-          console.warn('Error general al actualizar calendarios:', calendarError);
           // Continuar sin bloquear la creación del evento
         }
 

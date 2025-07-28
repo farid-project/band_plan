@@ -70,26 +70,16 @@ class SpotifyService {
     // Subscribe to auth changes
     this.subscribeToAuthChanges();
     
-    // Debug: Log configuration
-    console.log('🎵 Spotify Service Config:', {
-      clientId: this.clientId ? this.clientId.substring(0, 8) + '...' : 'NOT SET',
-      redirectUri: this.redirectUri || 'NOT SET',
-      hasClientId: !!this.clientId,
-      hasRedirectUri: !!this.redirectUri
-    });
   }
 
   // Authentication methods
   async getAuthUrl(): Promise<string> {
-    console.log('🎵 getAuthUrl called, generating new auth URL...');
     
     // Only clear auth state if we're not currently processing auth
     if (!this.isProcessingAuth) {
       localStorage.removeItem('spotify_auth_state');
       localStorage.removeItem('spotify_code_verifier');
-      console.log('🎵 Cleared previous auth state');
     } else {
-      console.log('🎵 Auth in progress, keeping existing state');
     }
     
     const state = this.generateRandomString(16);
@@ -100,8 +90,6 @@ class SpotifyService {
     localStorage.setItem('spotify_auth_state', state);
     localStorage.setItem('spotify_code_verifier', codeVerifier);
     
-    console.log('🎵 Generated new auth state:', state.substring(0, 8) + '...');
-    console.log('🎵 Using redirect URI:', this.redirectUri);
 
     const codeChallenge = await this.generateCodeChallenge(codeVerifier);
 

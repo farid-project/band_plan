@@ -1,3 +1,4 @@
+-- Simple fix for location extraction - treat everything as text
 CREATE OR REPLACE FUNCTION public.get_group_calendar(
   p_group_id UUID,
   p_member_id UUID
@@ -67,12 +68,12 @@ BEGIN
       'DTEND;TZID=Europe/Madrid:' || to_char((event_record.date + event_record.time + interval '2 hours')::timestamp, 'YYYYMMDD"T"HH24MISS') || chr(13) || chr(10) ||
       'SUMMARY:' || event_record.band_name || ' - ' || event_record.event_name || chr(13) || chr(10);
 
-    IF event_record.venue_name != '' THEN
+    IF event_record.venue_name IS NOT NULL AND event_record.venue_name != '' THEN
       calendar_text := calendar_text ||
         'LOCATION:' || event_record.venue_name || chr(13) || chr(10);
     END IF;
 
-    IF event_record.notes != '' THEN
+    IF event_record.notes IS NOT NULL AND event_record.notes != '' THEN
       calendar_text := calendar_text ||
         'DESCRIPTION:' || event_record.notes || chr(13) || chr(10);
     END IF;
@@ -87,5 +88,5 @@ BEGIN
 END;
 $$;
 
--- Dar permisos de ejecución
+-- Grant execution permissions
 GRANT EXECUTE ON FUNCTION public.get_group_calendar(UUID, UUID) TO authenticated;

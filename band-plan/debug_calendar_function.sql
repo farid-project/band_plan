@@ -1,4 +1,5 @@
-CREATE OR REPLACE FUNCTION public.get_group_calendar(
+-- Debug version of get_group_calendar function with logging
+CREATE OR REPLACE FUNCTION public.get_group_calendar_debug(
   p_group_id UUID,
   p_member_id UUID
 )
@@ -11,6 +12,9 @@ DECLARE
   calendar_text TEXT;
   event_record RECORD;
   group_name TEXT;
+  safe_location TEXT;
+  event_count INTEGER := 0;
+  location_count INTEGER := 0;
 BEGIN
   -- Obtener el nombre del grupo
   SELECT name INTO group_name
@@ -50,7 +54,7 @@ BEGIN
       e.date,
       e.time,
       COALESCE(e.notes, '') as notes,
-      COALESCE(e.location, '') as venue_name,
+      e.location as raw_location,
       g.name as band_name
     FROM events e
     JOIN event_members em ON em.event_id = e.id
@@ -59,6 +63,28 @@ BEGIN
     AND e.group_id = p_group_id
     ORDER BY e.date, e.time
   LOOP
+    event_count := event_count + 1;
+    
+    -- Safely extract location regardless of whether it's stored as JSON or TEXT
+    BEGIN
+      -- Try to parse as JSON first (in case it's stored as JSON)
+      IF event_record.raw_location IS NOT NULL AND event_record.raw_location != '' THEN
+        location_count := location_count + 1;
+        IF event_record.raw_location::text ~ '^[\{\[]' THEN
+          -- It looks like JSON, try to parse it
+          safe_location := COALESCE(event_record.raw_location->>'name', event_record.raw_location::text);
+        ELSE
+          -- It's plain text
+          safe_location := event_record.raw_location::text;
+        END IF;
+      ELSE
+        safe_location := '';
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      -- If JSON parsing fails, treat as plain text
+      safe_location := COALESCE(event_record.raw_location::text, '');
+    END;
+
     calendar_text := calendar_text ||
       'BEGIN:VEVENT' || chr(13) || chr(10) ||
       'UID:' || event_record.id || '@bandmanager.app' || chr(13) || chr(10) ||
@@ -67,19 +93,38 @@ BEGIN
       'DTEND;TZID=Europe/Madrid:' || to_char((event_record.date + event_record.time + interval '2 hours')::timestamp, 'YYYYMMDD"T"HH24MISS') || chr(13) || chr(10) ||
       'SUMMARY:' || event_record.band_name || ' - ' || event_record.event_name || chr(13) || chr(10);
 
-    IF event_record.venue_name != '' THEN
-      calendar_text := calendar_text ||
-        'LOCATION:' || event_record.venue_name || chr(13) || chr(10);
+    -- Add debug information to description
+    calendar_text := calendar_text ||
+      'DESCRIPTION:' || event_record.notes;
+    
+    IF event_record.notes != '' AND safe_location != '' THEN
+      calendar_text := calendar_text || chr(13) || chr(10) || chr(13) || chr(10);
     END IF;
+    
+    -- Add debug info about location
+    calendar_text := calendar_text || 
+      'DEBUG - Raw location: ' || COALESCE(event_record.raw_location::text, 'NULL') || chr(13) || chr(10) ||
+      'DEBUG - Safe location: ' || COALESCE(safe_location, 'NULL') || chr(13) || chr(10);
 
-    IF event_record.notes != '' THEN
+    IF safe_location != '' THEN
       calendar_text := calendar_text ||
-        'DESCRIPTION:' || event_record.notes || chr(13) || chr(10);
+        'LOCATION:' || safe_location || chr(13) || chr(10);
     END IF;
 
     calendar_text := calendar_text ||
       'END:VEVENT' || chr(13) || chr(10);
   END LOOP;
+
+  -- Add summary debug info
+  calendar_text := calendar_text ||
+    'BEGIN:VEVENT' || chr(13) || chr(10) ||
+    'UID:debug@bandmanager.app' || chr(13) || chr(10) ||
+    'DTSTAMP:' || to_char(NOW() AT TIME ZONE 'UTC', 'YYYYMMDD"T"HH24MISS"Z"') || chr(13) || chr(10) ||
+    'DTSTART;TZID=Europe/Madrid:' || to_char(NOW()::timestamp, 'YYYYMMDD"T"HH24MISS') || chr(13) || chr(10) ||
+    'DTEND;TZID=Europe/Madrid:' || to_char((NOW() + interval '1 hour')::timestamp, 'YYYYMMDD"T"HH24MISS') || chr(13) || chr(10) ||
+    'SUMMARY:DEBUG INFO' || chr(13) || chr(10) ||
+    'DESCRIPTION:Total events: ' || event_count || ', Events with location: ' || location_count || chr(13) || chr(10) ||
+    'END:VEVENT' || chr(13) || chr(10);
 
   calendar_text := calendar_text || 'END:VCALENDAR' || chr(13) || chr(10);
 
@@ -87,5 +132,5 @@ BEGIN
 END;
 $$;
 
--- Dar permisos de ejecución
-GRANT EXECUTE ON FUNCTION public.get_group_calendar(UUID, UUID) TO authenticated;
+-- Grant execution permissions
+GRANT EXECUTE ON FUNCTION public.get_group_calendar_debug(UUID, UUID) TO authenticated;
