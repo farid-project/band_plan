@@ -13,11 +13,13 @@ import { useParams } from 'react-router-dom';
 import { es } from 'date-fns/locale';
 
 interface MemberAvailability {
-  userId: string;
+  userId: string | null; // Can be null for local members
+  memberId: string; // Always present - group_member.id
   memberName: string;
   dates: Date[];
   instruments: { id: string; name: string; }[];
   roleInBand: 'principal' | 'sustituto';
+  memberType: 'registered' | 'local';
 }
 
 interface MemberEvent {
@@ -126,7 +128,7 @@ export default function AvailabilityCalendar({
   const [selectedDay, setSelectedDay] = useState<Date | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null); // This now holds group_member.id
   const [isAdmin, setIsAdmin] = useState(false);
   const [groupAvailableDates, setGroupAvailableDates] = useState<Date[]>([]);
   const [memberEvents, setMemberEvents] = useState<MemberEvent[]>([]);
@@ -194,20 +196,31 @@ useEffect(() => {
   const getAvailableMembersForDate = useCallback((date: Date) => {
     const dateStr = format(date, 'yyyy-MM-dd');
     
-    return members.filter(member => {
-      if (!member.user_id) return false;
-      
-      // Verificar si el miembro marcó disponibilidad para esta fecha
-      const hasMarkedAvailability = memberDateMap.get(member.user_id)?.has(dateStr) ?? false;
-      
-      // Verificar si tiene eventos que lo bloqueen
-      const hasGroupEvent = eventMaps.groupEvents.get(member.user_id)?.has(dateStr) ?? false;
-      const hasExternalEvent = eventMaps.externalEvents.get(member.user_id)?.has(dateStr) ?? false;
-      
-      // Está disponible si marcó disponibilidad y no tiene eventos
-      return hasMarkedAvailability && !hasGroupEvent && !hasExternalEvent;
+    const availableMembers = members.filter(member => {
+      if (member.user_id) {
+        // Registered member - check availability and events
+        const hasMarkedAvailability = memberDateMap.get(member.user_id)?.has(dateStr) ?? false;
+        const hasGroupEvent = eventMaps.groupEvents.get(member.user_id)?.has(dateStr) ?? false;
+        const hasExternalEvent = eventMaps.externalEvents.get(member.user_id)?.has(dateStr) ?? false;
+        
+        return hasMarkedAvailability && !hasGroupEvent && !hasExternalEvent;
+      } else {
+        // Local member - check availability in our state (no external events to worry about)
+        const memberAvailability = availabilities.find(a => a.memberId === member.id);
+        const hasMarkedAvailability = memberAvailability?.dates.some(d => 
+          format(d, 'yyyy-MM-dd') === dateStr
+        ) ?? false;
+        
+        console.log(`🎭 Local member ${member.name} for ${dateStr}: availability=${hasMarkedAvailability}, dates:`, memberAvailability?.dates);
+        
+        return hasMarkedAvailability;
+      }
     });
-  }, [members, memberDateMap, eventMaps]);
+    
+    console.log(`📅 Available members for ${dateStr}:`, availableMembers.map(m => `${m.name} (${m.member_type || 'registered'})`));
+    
+    return availableMembers;
+  }, [members, memberDateMap, eventMaps, availabilities]);
 
   // Función para verificar si todos los instrumentos están cubiertos en una fecha
   const areAllInstrumentsCovered = useCallback((date: Date) => {
@@ -449,38 +462,76 @@ useEffect(() => {
     
     setLoading(true);
     try {
-      const groupMemberIds = members
-        .filter((m): m is GroupMember & { user_id: string } => m.user_id !== null)
-        .map(m => m.user_id);
+      // Get availability for all members (both registered and local)
+      const registeredMemberIds = members
+        .filter(m => m.user_id !== null)
+        .map(m => m.user_id!);
+      
+      const localMemberIds = members
+        .filter(m => m.user_id === null)
+        .map(m => m.id);
 
       interface AvailabilityData {
-        user_id: string;
+        user_id: string | null;
+        group_member_id: string | null;
         date: string;
       }
 
+      // Fetch availability for both registered users and local members
       const response = await safeSupabaseRequest(
         async () => {
-          return await supabase
+          if (registeredMemberIds.length === 0 && localMemberIds.length === 0) {
+            return [];
+          }
+          
+          let query = supabase
             .from('member_availability')
-            .select('user_id, date')
-            .in('user_id', groupMemberIds)
-            .order('date');
+            .select('user_id, group_member_id, date');
+          
+          const conditions = [];
+          if (registeredMemberIds.length > 0) {
+            conditions.push(`user_id.in.(${registeredMemberIds.join(',')})`);
+          }
+          if (localMemberIds.length > 0) {
+            conditions.push(`group_member_id.in.(${localMemberIds.join(',')})`);
+          }
+          
+          if (conditions.length > 0) {
+            query = query.or(conditions.join(','));
+          }
+          
+          return query.order('date');
         },
         'Error fetching availabilities'
       );
 
       if (response) {
-        const formattedAvailabilities = members
-          .filter((m): m is GroupMember & { user_id: string } => m.user_id !== null)
-          .map(member => ({
+        console.log('Raw availability response:', response);
+        console.log('Members being processed:', members);
+        
+        const formattedAvailabilities = members.map(member => {
+          const availabilityItems = response
+            .filter((item: AvailabilityData) => 
+              (member.user_id && item.user_id === member.user_id) ||
+              (!member.user_id && item.group_member_id === member.id)
+            );
+          
+          const memberAvailability = {
             userId: member.user_id,
+            memberId: member.id,
             memberName: member.name || 'Unknown Member',
-            dates: response
-              .filter((item: AvailabilityData) => item.user_id === member.user_id)
-              .map((item: AvailabilityData) => new Date(item.date)),
+            memberType: (member.member_type || 'registered') as 'registered' | 'local',
+            dates: availabilityItems.map((item: AvailabilityData) => new Date(item.date)),
             instruments: member.instruments || [],
             roleInBand: (member.role_in_group as 'principal' | 'sustituto') || 'principal'
-          }));
+          };
+          
+          console.log(`Member: ${member.name} (${member.member_type || 'registered'}), Availability items:`, availabilityItems, 'Formatted:', memberAvailability);
+          
+          return memberAvailability;
+        });
+        
+        console.log('Final formatted availabilities:', formattedAvailabilities);
         setAvailabilities(formattedAvailabilities);
       }
     } catch (error) {
@@ -577,10 +628,21 @@ useEffect(() => {
     
     setSaving(true);
 
-    const currentMember = members.find(m => m.user_id === user.id);
+    // Get the member we're managing (either selected member or current user)
+    const targetMemberId = selectedMemberId || members.find(m => m.user_id === user.id)?.id;
+    const targetMember = members.find(m => m.id === targetMemberId);
+    
+    if (!targetMember) {
+      toast.error('Miembro no encontrado');
+      setSaving(false);
+      return;
+    }
+
+    // Check permissions
+    const currentUserMember = members.find(m => m.user_id === user.id);
     const canManage = isAdmin || 
-      currentMember?.role_in_group === 'principal' || 
-      user.id === (selectedMemberId ?? user.id);
+      currentUserMember?.role_in_group === 'principal' || 
+      targetMember.user_id === user.id;
 
     if (!canManage) {
       toast.error('No tienes permisos para gestionar esta disponibilidad');
@@ -588,45 +650,48 @@ useEffect(() => {
       return;
     }
 
-    const userId = selectedMemberId ?? user.id;
+    // Check for existing events on this date (only for registered members)
+    if (targetMember.user_id) {
+      const hasEventOnDate = memberEvents.some((event: MemberEvent) => 
+        event.user_id === targetMember.user_id &&
+        isSameDay(new Date(event.date), day)
+      );
 
-    const hasEventOnDate = memberEvents.some((event: MemberEvent) => 
-      event.user_id === userId &&
-      isSameDay(new Date(event.date), day)
-    );
-
-    if (hasEventOnDate) {
-      toast.error('No puedes cambiar tu disponibilidad en fechas con eventos programados');
-      setSaving(false);
-      return;
-    }
-    
-    try {
-      const currentMember = members.find(m => m.user_id === userId);
-      if (!currentMember) {
-        toast.error('Miembro no encontrado');
+      if (hasEventOnDate) {
+        toast.error('No puedes cambiar la disponibilidad en fechas con eventos programados');
         setSaving(false);
         return;
       }
-  
+    }
+    
+    try {
       const isSelected = availabilities
-        .find(a => a.userId === currentMember.user_id)
+        .find(a => a.memberId === targetMember.id)
         ?.dates.some(d => isSameDay(d, day));
   
       const dateStr = format(day, 'yyyy-MM-dd');
       
-      // Actualizar el estado visual del día seleccionado después de determinar si está disponible o no
-      // Solo actualizamos el día seleccionado si la operación es exitosa
-      
       if (isSelected) {
-        // Eliminar la fecha de la base de datos
+        // Delete availability
         try {
-          // Luego intentamos la operación en la base de datos
-          const deleteResponse = await supabase
-            .from('member_availability')
-            .delete()
-            .eq('user_id', currentMember.user_id)
-            .eq('date', dateStr);
+          let deleteResponse;
+          if (targetMember.user_id) {
+            // Registered member - use user_id
+            console.log('Deleting availability for registered member:', targetMember.name, targetMember.user_id, dateStr);
+            deleteResponse = await supabase
+              .from('member_availability')
+              .delete()
+              .eq('user_id', targetMember.user_id)
+              .eq('date', dateStr);
+          } else {
+            // Local member - use group_member_id
+            console.log('Deleting availability for local member:', targetMember.name, targetMember.id, dateStr);
+            deleteResponse = await supabase
+              .from('member_availability')
+              .delete()
+              .eq('group_member_id', targetMember.id)
+              .eq('date', dateStr);
+          }
           
           if (deleteResponse.error) {
             console.error('Error al eliminar disponibilidad:', deleteResponse.error);
@@ -635,33 +700,50 @@ useEffect(() => {
             return;
           }
           
-          // Si la operación fue exitosa, actualizamos el estado visual
+          // Update visual state
           setSelectedDay(day);
-          toast.success(`Fecha ${format(day, 'dd/MM/yyyy')} eliminada de tu disponibilidad`);
+          toast.success(`Fecha ${format(day, 'dd/MM/yyyy')} eliminada de la disponibilidad`);
           
-          // Actualizar el estado local sin hacer fetch
-          setAvailabilities(prev => prev.map(avail => {
-            if (avail.userId === currentMember.user_id) {
-              return {
-                ...avail,
-                dates: avail.dates.filter(d => !isSameDay(d, day))
-              };
-            }
-            return avail;
-          }));
+          // Update local state
+          console.log('Updating local state - removing date for member:', targetMember.name);
+          setAvailabilities(prev => {
+            console.log('Current availabilities before delete:', prev);
+            const updated = prev.map(avail => {
+              if (avail.memberId === targetMember.id) {
+                const newDates = avail.dates.filter(d => !isSameDay(d, day));
+                console.log('Updated dates for', avail.memberName, ':', newDates);
+                return {
+                  ...avail,
+                  dates: newDates
+                };
+              }
+              return avail;
+            });
+            console.log('Updated availabilities after delete:', updated);
+            return updated;
+          });
           
-          // La disponibilidad del grupo se recalcula automáticamente
         } catch (error) {
           console.error('Error inesperado al eliminar disponibilidad:', error);
           toast.error('Ha ocurrido un error al procesar tu solicitud');
         }
       } else {
-        // Añadir la fecha a la base de datos
+        // Add availability
         try {
-          // Luego intentamos la operación en la base de datos
-          const insertResponse = await supabase
-            .from('member_availability')
-            .insert([{ user_id: currentMember.user_id, date: dateStr }]);
+          let insertResponse;
+          if (targetMember.user_id) {
+            // Registered member - use user_id
+            console.log('Adding availability for registered member:', targetMember.name, targetMember.user_id, dateStr);
+            insertResponse = await supabase
+              .from('member_availability')
+              .insert([{ user_id: targetMember.user_id, date: dateStr }]);
+          } else {
+            // Local member - use group_member_id
+            console.log('Adding availability for local member:', targetMember.name, targetMember.id, dateStr);
+            insertResponse = await supabase
+              .from('member_availability')
+              .insert([{ group_member_id: targetMember.id, date: dateStr }]);
+          }
           
           if (insertResponse.error) {
             console.error('Error al insertar disponibilidad:', insertResponse.error);
@@ -670,22 +752,29 @@ useEffect(() => {
             return;
           }
           
-          // Si la operación fue exitosa, actualizamos el estado visual
+          // Update visual state
           setSelectedDay(day);
-          toast.success(`Fecha ${format(day, 'dd/MM/yyyy')} añadida a tu disponibilidad`);
+          toast.success(`Fecha ${format(day, 'dd/MM/yyyy')} añadida a la disponibilidad`);
           
-          // Actualizar el estado local sin hacer fetch
-          setAvailabilities(prev => prev.map(avail => {
-            if (avail.userId === currentMember.user_id) {
-              return {
-                ...avail,
-                dates: [...avail.dates, day]
-              };
-            }
-            return avail;
-          }));
+          // Update local state
+          console.log('Updating local state - adding date for member:', targetMember.name);
+          setAvailabilities(prev => {
+            console.log('Current availabilities before add:', prev);
+            const updated = prev.map(avail => {
+              if (avail.memberId === targetMember.id) {
+                const newDates = [...avail.dates, day];
+                console.log('Updated dates for', avail.memberName, ':', newDates);
+                return {
+                  ...avail,
+                  dates: newDates
+                };
+              }
+              return avail;
+            });
+            console.log('Updated availabilities after add:', updated);
+            return updated;
+          });
           
-          // La disponibilidad del grupo se recalcula automáticamente
         } catch (error) {
           console.error('Error inesperado al añadir disponibilidad:', error);
           toast.error('Ha ocurrido un error al procesar tu solicitud');
@@ -729,15 +818,16 @@ useEffect(() => {
     const availableMembers = getAvailableMembersForDate(date);
     
     // Check if current user is involved
-    const currentUserId = selectedMemberId || user?.id;
-    const isCurrentUserInvolved = membersForDay.some(m => m.user_id === currentUserId);
+    const currentMemberId = selectedMemberId || members.find(m => m.user_id === user?.id)?.id;
+    const currentMember = members.find(m => m.id === currentMemberId);
+    const isCurrentUserInvolved = membersForDay.some(m => m.id === currentMemberId);
     
-    // Check if current user has external events (simple lookup)
-    const currentUserHasExternalEvent = currentUserId && 
-      eventMaps.externalEvents.get(currentUserId)?.has(dateStr) || false;
+    // Check if current user has external events (simple lookup) - only for registered members
+    const currentUserHasExternalEvent = currentMember?.user_id && 
+      eventMaps.externalEvents.get(currentMember.user_id)?.has(dateStr) || false;
     
     // Get other members (not the current user)
-    const otherMembers = membersForDay.filter(m => m.user_id !== currentUserId);
+    const otherMembers = membersForDay.filter(m => m.id !== currentMemberId);
     const otherMembersCount = otherMembers.length;
     
     // Count other members with external events (simple lookups)
@@ -814,7 +904,7 @@ useEffect(() => {
                       <div
                         key={member.id}
                         className={`tooltip-member ${
-                          member.user_id === (selectedMemberId || user?.id) ? 'you' : 'other'
+                          member.id === (selectedMemberId || members.find(m => m.user_id === user?.id)?.id) ? 'you' : 'other'
                         }`}
                       >
                         <div className="flex flex-col">
@@ -836,7 +926,7 @@ useEffect(() => {
                                   Con Evento
                                 </span>
                               )}
-                              {member.user_id === (selectedMemberId || user?.id) && (
+                              {member.id === (selectedMemberId || members.find(m => m.user_id === user?.id)?.id) && (
                                 <span className="text-xs bg-indigo-200 px-1.5 py-0.5 rounded-full">
                                   Tú
                                 </span>
@@ -959,13 +1049,16 @@ useEffect(() => {
           <div className="relative w-full max-w-xs">
             <select
               id="member-select"
-              value={selectedMemberId || user?.id || ''}
-              onChange={(e) => setSelectedMemberId(e.target.value === user?.id ? null : e.target.value)}
+              value={selectedMemberId || (members.find(m => m.user_id === user?.id)?.id) || ''}
+              onChange={(e) => {
+                const currentUserMember = members.find(m => m.user_id === user?.id);
+                setSelectedMemberId(e.target.value === currentUserMember?.id ? null : e.target.value);
+              }}
               className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 rounded-md shadow-sm"
             >
               {members.map((member) => (
-                <option key={member.id} value={member.user_id || ''}>
-                  {member.name} {member.user_id === user?.id ? '(Tú)' : ''}
+                <option key={member.id} value={member.id}>
+                  {member.name} {member.user_id === user?.id ? '(Tú)' : ''} {!member.user_id ? '(Local)' : ''}
                 </option>
               ))}
             </select>

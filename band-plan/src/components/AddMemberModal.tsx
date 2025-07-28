@@ -38,6 +38,7 @@ export default function AddMemberModal({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<'principal' | 'sustituto'>('principal');
+  // memberType is now automatically determined based on email
   const [selectedInstruments, setSelectedInstruments] = useState<string[]>([]);
   const [newInstrumentName, setNewInstrumentName] = useState('');
   const [showNewInstrumentInput, setShowNewInstrumentInput] = useState(false);
@@ -174,10 +175,9 @@ export default function AddMemberModal({
       toast.error('Por favor ingresa un nombre');
       return;
     }
-    if (!email.trim()) {
-      toast.error('Por favor ingresa un email');
-      return;
-    }
+    
+    // Auto-detect member type based on email
+    const memberType = email.trim() ? 'registered' : 'local';
 
     if (selectedInstruments.length === 0) {
       toast.error('Por favor selecciona al menos un rol');
@@ -199,53 +199,58 @@ export default function AddMemberModal({
           group_id: groupId
         }));
 
-      const formattedNewInstruments = newInstruments.map(inst => `(${inst.name}, ${groupId})`);
-
+      // Use the new flexible function for both registered and local members
       const { data: memberData, error: memberError } = await supabase.rpc(
-        'add_group_member_with_instruments',
+        'add_group_member_flexible',
         {
           p_group_id: groupId,
           p_name: name,
-          p_email: email.toLowerCase().trim(),
+          p_email: memberType === 'registered' ? email.toLowerCase().trim() : null,
           p_role: isEmptyGroup ? 'principal' : role,
           p_user_id: userRole === 'user' && !isPrincipalMember ? user.id : null,
           p_instruments: existingInstruments,
-          p_new_instruments: newInstruments.map(inst => inst.name)
+          p_new_instruments: newInstruments.map(inst => inst.name),
+          p_member_type: memberType
         }
       );
 
       if (memberError) throw memberError;
 
-      try {
-        const { invitation } = memberData;
-        console.log('Datos de invitación:', invitation);
-        
-        if (!invitation || !invitation.token) {
-          throw new Error('No se recibieron los datos de invitación correctamente');
-        }
-
-        const { error: emailError } = await supabase.functions.invoke('send-invitation-email', {
-          body: {
-            email: invitation.email,
-            token: invitation.token,
-            userExists: invitation.userExists,
-            groupName: invitation.groupName,
-            groupMemberId: invitation.groupMemberId
+      // Only send invitation for registered members (with email)
+      if (memberType === 'registered' && memberData.invitation) {
+        try {
+          const { invitation } = memberData;
+          console.log('Datos de invitación:', invitation);
+          
+          if (!invitation || !invitation.token) {
+            throw new Error('No se recibieron los datos de invitación correctamente');
           }
-        });
 
-        if (emailError) {
-          console.error('Error sending invitation email:', emailError);
-          throw new Error(`Error al enviar la invitación: ${emailError.message}`);
+          const { error: emailError } = await supabase.functions.invoke('send-invitation-email', {
+            body: {
+              email: invitation.email,
+              token: invitation.token,
+              userExists: invitation.userExists,
+              groupName: invitation.groupName,
+              groupMemberId: invitation.groupMemberId
+            }
+          });
+
+          if (emailError) {
+            console.error('Error sending invitation email:', emailError);
+            throw new Error(`Error al enviar la invitación: ${emailError.message}`);
+          }
+
+          toast.success(`Miembro añadido e invitación enviada a ${email}`);
+        } catch (emailError: any) {
+          console.error('Error sending invitation:', emailError);
+          toast.error(`Error al enviar la invitación: ${emailError.message || 'Error desconocido'}`, {
+            icon: '⚠️',
+            duration: 5000
+          });
         }
-
-        toast.success('Miembro añadido e invitación enviada');
-      } catch (emailError: any) {
-        console.error('Error sending invitation:', emailError);
-        toast.error(`Error al enviar la invitación: ${emailError.message || 'Error desconocido'}`, {
-          icon: '⚠️',
-          duration: 5000
-        });
+      } else {
+        toast.success(`${name} añadido al grupo como miembro local`);
       }
 
       onMemberAdded();
@@ -266,7 +271,7 @@ export default function AddMemberModal({
       <div className="bg-white rounded-lg w-full max-w-md">
         <div className="flex justify-between items-center p-6 border-b">
           <h2 className="text-xl font-semibold">
-            {isJoining ? 'Join Group' : 'Add New Member'}
+            {isJoining ? 'Unirse al Grupo' : 'Añadir Miembro'}
           </h2>
           <button
             onClick={onClose}
@@ -278,23 +283,30 @@ export default function AddMemberModal({
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <Input
-            label="Name"
+            label="Nombre"
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
-            placeholder="Enter member name"
+            placeholder="Ingresa el nombre del miembro"
             disabled={isJoining}
           />
 
-          <Input
-            label="Email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            placeholder="Enter member email"
-            disabled={isJoining}
-          />
+          <div>
+            <Input
+              label="Email (opcional)"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required={false}
+              placeholder="Ingresa el email para enviar invitación"
+              disabled={isJoining}
+            />
+            <div className="mt-1 text-xs text-gray-500">
+              💡 <strong>Con email:</strong> Recibirá invitación y podrá acceder a la app
+              <br />
+              🎭 <strong>Sin email:</strong> Solo para organización interna del grupo
+            </div>
+          </div>
 
           {!isEmptyGroup && userRole === 'admin' && (
             <div>
@@ -315,7 +327,7 @@ export default function AddMemberModal({
           <div>
             <div className="flex justify-between items-center mb-2">
               <label className="block text-sm font-medium text-gray-700">
-                Instruments
+                Roles/Instrumentos
               </label>
               {!showNewInstrumentInput && (userRole === 'admin' || isEmptyGroup || isPrincipalMember) && (
                 <Button
@@ -412,7 +424,7 @@ export default function AddMemberModal({
               type="submit"
               loading={loading}
             >
-              {isJoining ? 'Join Group' : 'Add Member'}
+              {isJoining ? 'Unirse al Grupo' : 'Añadir Miembro'}
             </Button>
           </div>
         </form>

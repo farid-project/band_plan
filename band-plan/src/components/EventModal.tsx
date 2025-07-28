@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Event, GroupMember, Setlist } from '../types';
+
+interface ExtendedGroupMember extends GroupMember {
+  instruments: {
+    name: string;
+    id: string;
+  }[];
+}
 import Button from './Button';
 import Input from './Input';
 import { X, MapPin, Loader2 } from 'lucide-react';
@@ -22,7 +29,7 @@ interface EventModalProps {
   event?: Event;
   onEventSaved: () => void;
   availableDates: Date[];
-  members: GroupMember[];
+  members: ExtendedGroupMember[];
 }
 
 interface EventMember {
@@ -165,9 +172,9 @@ export default function EventModal({
           isAvailable: selectedMemberIds.has(member.id) || (
             member.user_id ? (
               availableUserIds.has(member.user_id) && !busyMembers.has(member.user_id)
-            ) : true
+            ) : true // Local members (without user_id) are always available
           ),
-          sync_calendar: member.sync_calendar
+          sync_calendar: member.sync_calendar || false
         }));
 
         setSelectedMembers(membersList);
@@ -216,7 +223,7 @@ export default function EventModal({
       const membersList = members.map(member => {
         const isAvailable = member.user_id ? (
           availableUserIds.has(member.user_id) && !busyMembers.has(member.user_id)
-        ) : true;
+        ) : true; // Local members (without user_id) are always available
 
         return {
           memberId: member.id,
@@ -226,10 +233,9 @@ export default function EventModal({
             preSelectedMemberIds.includes(member.id) : 
             (member.role_in_group === 'principal' && isAvailable),
           isAvailable,
-          sync_calendar: member.sync_calendar
+          sync_calendar: member.sync_calendar || false
         };
       });
-
       setSelectedMembers(membersList);
     } catch (error) {
       console.error('Error loading available members:', error);
@@ -450,7 +456,7 @@ export default function EventModal({
         try {
           await Promise.all(
             selectedMembers
-              .filter(member => member.selected && member.sync_calendar)
+              .filter(member => member.selected && member.sync_calendar && member.userId)
               .map(async (member) => {
                 console.log('Actualizando calendario para miembro:', member);
                 try {

@@ -1,10 +1,16 @@
 import React from 'react';
 import { Music, AlertCircle } from 'lucide-react';
 import { GroupMember } from '../types';
-import { updateGroupCalendar } from '../utils/calendarSync';
+
+interface ExtendedGroupMember extends GroupMember {
+  instruments: {
+    name: string;
+    id: string;
+  }[];
+}
 
 interface EventMemberSelectorProps {
-  members: GroupMember[];
+  members: ExtendedGroupMember[];
   selectedMembers: {
     memberId: string;
     userId: string | null;
@@ -13,18 +19,16 @@ interface EventMemberSelectorProps {
   }[];
   onMemberSelectionChange: (memberId: string, selected: boolean) => void;
   validationError: boolean;
-  groupId: string;
 }
 
 export default function EventMemberSelector({
   members,
   selectedMembers,
   onMemberSelectionChange,
-  validationError,
-  groupId
+  validationError
 }: EventMemberSelectorProps) {
   // Group members by role
-    const principalMembers = selectedMembers.filter(m => {
+  const principalMembers = selectedMembers.filter(m => {
     const member = members.find(bm => bm.id === m.memberId);
     return member?.role_in_group === 'principal';
   });
@@ -82,19 +86,6 @@ export default function EventMemberSelector({
     </div>
   );
 
-  const handleMemberSelectionChange = async (memberId: string, selected: boolean) => {
-    try {
-      onMemberSelectionChange(memberId, selected);
-      
-      // Si el miembro tiene sync_calendar activado, actualizar su calendario
-      const member = members.find(m => m.id === memberId);
-      if (member?.sync_calendar) {
-        await updateGroupCalendar(groupId, memberId);
-      }
-    } catch (error) {
-      console.error('Error updating member calendar:', error);
-    }
-  };
 
   return (
     <div className="space-y-4">
