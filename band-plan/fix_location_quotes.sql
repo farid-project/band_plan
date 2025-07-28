@@ -1,3 +1,4 @@
+-- Fix location extraction by removing quotes and handling all edge cases
 CREATE OR REPLACE FUNCTION public.get_group_calendar(
   p_group_id UUID,
   p_member_id UUID
@@ -11,6 +12,7 @@ DECLARE
   calendar_text TEXT;
   event_record RECORD;
   group_name TEXT;
+  safe_location TEXT;
 BEGIN
   -- Obtener el nombre del grupo
   SELECT name INTO group_name
@@ -50,7 +52,7 @@ BEGIN
       e.date,
       e.time,
       COALESCE(e.notes, '') as notes,
-      COALESCE(e.location, '') as venue_name,
+      e.location as raw_location,
       g.name as band_name
     FROM events e
     JOIN event_members em ON em.event_id = e.id
@@ -59,6 +61,32 @@ BEGIN
     AND e.group_id = p_group_id
     ORDER BY e.date, e.time
   LOOP
+    -- Safely extract location regardless of whether it's stored as JSON or TEXT
+    BEGIN
+      IF event_record.raw_location IS NOT NULL AND event_record.raw_location::text != '' THEN
+        IF event_record.raw_location::text ~ '^[\{\[]' THEN
+          -- It looks like JSON, try to parse it
+          safe_location := COALESCE(event_record.raw_location->>'name', event_record.raw_location::text);
+        ELSE
+          -- It's plain text, but might have quotes
+          safe_location := event_record.raw_location::text;
+        END IF;
+        
+        -- Remove surrounding quotes if they exist
+        safe_location := trim(both '"' from safe_location);
+        safe_location := trim(both '''' from safe_location);
+        safe_location := trim(safe_location);
+      ELSE
+        safe_location := '';
+      END IF;
+    EXCEPTION WHEN OTHERS THEN
+      -- If JSON parsing fails, treat as plain text and clean it
+      safe_location := COALESCE(event_record.raw_location::text, '');
+      safe_location := trim(both '"' from safe_location);
+      safe_location := trim(both '''' from safe_location);
+      safe_location := trim(safe_location);
+    END;
+
     calendar_text := calendar_text ||
       'BEGIN:VEVENT' || chr(13) || chr(10) ||
       'UID:' || event_record.id || '@bandmanager.app' || chr(13) || chr(10) ||
@@ -67,9 +95,9 @@ BEGIN
       'DTEND;TZID=Europe/Madrid:' || to_char((event_record.date + event_record.time + interval '2 hours')::timestamp, 'YYYYMMDD"T"HH24MISS') || chr(13) || chr(10) ||
       'SUMMARY:' || event_record.band_name || ' - ' || event_record.event_name || chr(13) || chr(10);
 
-    IF event_record.venue_name != '' THEN
+    IF safe_location IS NOT NULL AND safe_location != '' THEN
       calendar_text := calendar_text ||
-        'LOCATION:' || event_record.venue_name || chr(13) || chr(10);
+        'LOCATION:' || safe_location || chr(13) || chr(10);
     END IF;
 
     IF event_record.notes != '' THEN
@@ -87,5 +115,5 @@ BEGIN
 END;
 $$;
 
--- Dar permisos de ejecución
+-- Grant execution permissions
 GRANT EXECUTE ON FUNCTION public.get_group_calendar(UUID, UUID) TO authenticated;

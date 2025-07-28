@@ -148,7 +148,6 @@ useEffect(() => {
 
   // ENFOQUE MINIMALISTA: Solo obtener fechas marcadas por cada miembro (sin cálculos complejos)
   const memberDateMap = useMemo(() => {
-    console.log('🚀 SIMPLE: Calculando fechas por miembro...');
     
     const result = new Map<string, Set<string>>();
     
@@ -159,16 +158,13 @@ useEffect(() => {
         dateSet.add(format(date, 'yyyy-MM-dd'));
       });
       result.set(member.userId, dateSet);
-      console.log(`${member.memberName}: ${dateSet.size} fechas marcadas`);
     });
     
-    console.log(`✅ Total miembros procesados: ${result.size}`);
     return result;
   }, [availabilities]);
 
   // Crear mapas simples de eventos (solo para mostrar, sin cálculos complejos)
   const eventMaps = useMemo(() => {
-    console.log('📅 SIMPLE: Procesando eventos...');
     
     const groupEvents = new Map<string, Set<string>>();
     const externalEvents = new Map<string, Set<string>>();
@@ -187,7 +183,6 @@ useEffect(() => {
       externalEvents.get(event.user_id)!.add(format(new Date(event.date), 'yyyy-MM-dd'));
     });
     
-    console.log(`✅ Eventos procesados - Grupo: ${groupEvents.size} usuarios, Externos: ${externalEvents.size} usuarios`);
     
     return { groupEvents, externalEvents };
   }, [memberEvents, memberExternalEvents]);
@@ -211,13 +206,11 @@ useEffect(() => {
           format(d, 'yyyy-MM-dd') === dateStr
         ) ?? false;
         
-        console.log(`🎭 Local member ${member.name} for ${dateStr}: availability=${hasMarkedAvailability}, dates:`, memberAvailability?.dates);
         
         return hasMarkedAvailability;
       }
     });
     
-    console.log(`📅 Available members for ${dateStr}:`, availableMembers.map(m => `${m.name} (${m.member_type || 'registered'})`));
     
     return availableMembers;
   }, [members, memberDateMap, eventMaps, availabilities]);
@@ -260,7 +253,6 @@ useEffect(() => {
   const groupAvailableDatesCalculated = useMemo(() => {
     if (!onAvailableDatesChange) return []; // No calcular si no se necesita
     
-    console.log('🎯 SIMPLE: Calculando fechas disponibles del grupo (con sustitutos)...');
     
     const allDates = new Set<string>();
     memberDateMap.forEach(dates => {
@@ -283,17 +275,14 @@ useEffect(() => {
         const availablePrincipals = availableMembers.filter(m => m.role_in_group === 'principal');
         const availableSubstitutes = availableMembers.filter(m => m.role_in_group === 'sustituto');
         
-        console.log(`📅 ${dateStr}: ✅ Disponible - Principales: ${availablePrincipals.length}/${principalMembers.length}, Sustitutos: ${availableSubstitutes.length}`);
       } else {
         const availableMembers = getAvailableMembersForDate(date);
         const availablePrincipals = availableMembers.filter(m => m.role_in_group === 'principal');
         const availableSubstitutes = availableMembers.filter(m => m.role_in_group === 'sustituto');
         
-        console.log(`📅 ${dateStr}: ❌ NO disponible - Principales: ${availablePrincipals.length}/${principalMembers.length}, Sustitutos: ${availableSubstitutes.length} (instrumentos no cubiertos)`);
       }
     });
     
-    console.log(`✅ SIMPLE: ${availableDates.length} fechas disponibles para el grupo (considerando sustitutos)`);
     return availableDates;
   }, [members, memberDateMap, getAvailableMembersForDate, onAvailableDatesChange, areAllInstrumentsCovered]);
 
@@ -412,8 +401,6 @@ useEffect(() => {
   };
 
   const fetchMemberExternalEvents = async () => {
-    console.log('=== INICIO fetchMemberExternalEvents ===');
-    console.log('GroupId actual:', groupId);
     
     // Realizamos la consulta de eventos externos
     const fullQuery = await supabase
@@ -429,7 +416,6 @@ useEffect(() => {
       `)
       .neq('group_id', groupId);
     
-    console.log('4. Query completa:', fullQuery.data);
     
     if (fullQuery.error) {
       console.error('Error al obtener eventos externos:', fullQuery.error);
@@ -452,8 +438,6 @@ useEffect(() => {
     // Actualizamos el estado con los eventos externos formateados
     setMemberExternalEvents(formattedExternalEvents);
     
-    console.log('Eventos externos formateados:', formattedExternalEvents);
-    console.log('=== FIN fetchMemberExternalEvents ===');
   };
   
 
@@ -506,8 +490,6 @@ useEffect(() => {
       );
 
       if (response) {
-        console.log('Raw availability response:', response);
-        console.log('Members being processed:', members);
         
         const formattedAvailabilities = members.map(member => {
           const availabilityItems = response
@@ -526,12 +508,10 @@ useEffect(() => {
             roleInBand: (member.role_in_group as 'principal' | 'sustituto') || 'principal'
           };
           
-          console.log(`Member: ${member.name} (${member.member_type || 'registered'}), Availability items:`, availabilityItems, 'Formatted:', memberAvailability);
           
           return memberAvailability;
         });
         
-        console.log('Final formatted availabilities:', formattedAvailabilities);
         setAvailabilities(formattedAvailabilities);
       }
     } catch (error) {
@@ -614,7 +594,6 @@ useEffect(() => {
 
   const handleDayClick = async (day: Date) => {
     // Mostrar feedback visual inmediato de la selección
-    console.log(`Fecha seleccionada: ${format(day, 'dd/MM/yyyy')}`);
     
     if (!user) {
       toast.error('Debes iniciar sesión para gestionar la disponibilidad');
@@ -677,7 +656,6 @@ useEffect(() => {
           let deleteResponse;
           if (targetMember.user_id) {
             // Registered member - use user_id
-            console.log('Deleting availability for registered member:', targetMember.name, targetMember.user_id, dateStr);
             deleteResponse = await supabase
               .from('member_availability')
               .delete()
@@ -685,7 +663,6 @@ useEffect(() => {
               .eq('date', dateStr);
           } else {
             // Local member - use group_member_id
-            console.log('Deleting availability for local member:', targetMember.name, targetMember.id, dateStr);
             deleteResponse = await supabase
               .from('member_availability')
               .delete()
@@ -705,13 +682,10 @@ useEffect(() => {
           toast.success(`Fecha ${format(day, 'dd/MM/yyyy')} eliminada de la disponibilidad`);
           
           // Update local state
-          console.log('Updating local state - removing date for member:', targetMember.name);
           setAvailabilities(prev => {
-            console.log('Current availabilities before delete:', prev);
             const updated = prev.map(avail => {
               if (avail.memberId === targetMember.id) {
                 const newDates = avail.dates.filter(d => !isSameDay(d, day));
-                console.log('Updated dates for', avail.memberName, ':', newDates);
                 return {
                   ...avail,
                   dates: newDates
@@ -719,7 +693,6 @@ useEffect(() => {
               }
               return avail;
             });
-            console.log('Updated availabilities after delete:', updated);
             return updated;
           });
           
@@ -733,13 +706,11 @@ useEffect(() => {
           let insertResponse;
           if (targetMember.user_id) {
             // Registered member - use user_id
-            console.log('Adding availability for registered member:', targetMember.name, targetMember.user_id, dateStr);
             insertResponse = await supabase
               .from('member_availability')
               .insert([{ user_id: targetMember.user_id, date: dateStr }]);
           } else {
             // Local member - use group_member_id
-            console.log('Adding availability for local member:', targetMember.name, targetMember.id, dateStr);
             insertResponse = await supabase
               .from('member_availability')
               .insert([{ group_member_id: targetMember.id, date: dateStr }]);
@@ -757,13 +728,10 @@ useEffect(() => {
           toast.success(`Fecha ${format(day, 'dd/MM/yyyy')} añadida a la disponibilidad`);
           
           // Update local state
-          console.log('Updating local state - adding date for member:', targetMember.name);
           setAvailabilities(prev => {
-            console.log('Current availabilities before add:', prev);
             const updated = prev.map(avail => {
               if (avail.memberId === targetMember.id) {
                 const newDates = [...avail.dates, day];
-                console.log('Updated dates for', avail.memberName, ':', newDates);
                 return {
                   ...avail,
                   dates: newDates
@@ -771,7 +739,6 @@ useEffect(() => {
               }
               return avail;
             });
-            console.log('Updated availabilities after add:', updated);
             return updated;
           });
           

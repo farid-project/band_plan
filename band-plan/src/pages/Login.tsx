@@ -16,7 +16,6 @@ export default function Login() {
   const returnTo = location.state?.returnTo;
   const { user, setUser } = useAuthStore();
 
-  console.log('Login component state:', { returnTo, location });
 
   useEffect(() => {
     if (user) {
@@ -24,7 +23,6 @@ export default function Login() {
       
       // Check if returnTo contains Spotify callback parameters
       if (returnTo && (returnTo.includes('code=') || returnTo.includes('state='))) {
-        console.log('🎵 Login: Detected Spotify callback in returnTo:', returnTo);
         
         // Extract the Spotify parameters from returnTo
         const returnUrl = new URL(returnTo, window.location.origin);
@@ -33,11 +31,9 @@ export default function Login() {
         const spotifyError = returnUrl.searchParams.get('error');
         
         if (spotifyCode && spotifyState) {
-          console.log('🎵 Login: Extracting Spotify params and redirecting to root');
           // Redirect to root with Spotify parameters
           redirectTo = `/?code=${spotifyCode}&state=${spotifyState}`;
         } else if (spotifyError) {
-          console.log('🎵 Login: Spotify error detected:', spotifyError);
           redirectTo = `/?error=${spotifyError}`;
         } else {
           // Remove Spotify params from returnTo if they're incomplete
@@ -45,7 +41,6 @@ export default function Login() {
         }
       }
       
-      console.log('User authenticated, redirecting to:', redirectTo);
       navigate(redirectTo, { replace: true });
     }
   }, [user, returnTo, navigate]);
@@ -69,7 +64,6 @@ export default function Login() {
       
       // Check if returnTo contains Spotify callback parameters
       if (returnTo && (returnTo.includes('code=') || returnTo.includes('state='))) {
-        console.log('🎵 Login: handleLogin detected Spotify callback in returnTo:', returnTo);
         
         // Extract the Spotify parameters from returnTo
         const returnUrl = new URL(returnTo, window.location.origin);
@@ -78,11 +72,9 @@ export default function Login() {
         const spotifyError = returnUrl.searchParams.get('error');
         
         if (spotifyCode && spotifyState) {
-          console.log('🎵 Login: handleLogin extracting Spotify params and redirecting to root');
           // Redirect to root with Spotify parameters
           redirectTo = `/?code=${spotifyCode}&state=${spotifyState}`;
         } else if (spotifyError) {
-          console.log('🎵 Login: handleLogin Spotify error detected:', spotifyError);
           redirectTo = `/?error=${spotifyError}`;
         } else {
           // Remove Spotify params from returnTo if they're incomplete
@@ -90,7 +82,6 @@ export default function Login() {
         }
       }
       
-      console.log('Login successful, redirecting to:', redirectTo);
       navigate(redirectTo, { replace: true });
     } catch (error: any) {
       toast.error(error.message || 'Failed to login');

@@ -29,13 +29,11 @@ export default function NotificationBell() {
 
   useEffect(() => {
     if (user) {
-      console.log('Inicializando NotificationBell para usuario:', user.id);
       fetchNotifications();
       setupRealtimeSubscription();
 
       return () => {
         if (channel) {
-          console.log('Limpiando suscripción de notificaciones');
           channel.unsubscribe();
         }
       };
@@ -65,7 +63,6 @@ export default function NotificationBell() {
         await channel.unsubscribe();
       }
 
-      console.log('Configurando suscripción en tiempo real para:', user?.id);
       
       const newChannel = supabase.channel(`notifications:${user?.id}`, {
         config: {
@@ -80,7 +77,6 @@ export default function NotificationBell() {
           table: 'notifications',
           filter: `user_id=eq.${user?.id}`
         }, (payload) => {
-          console.log('Nueva notificación recibida:', payload);
           const newNotification = payload.new as Notification;
           setNotifications(prev => [newNotification, ...prev]);
           
@@ -104,7 +100,6 @@ export default function NotificationBell() {
           table: 'notifications',
           filter: `user_id=eq.${user?.id}`
         }, (payload) => {
-          console.log('Notificación actualizada:', payload);
           setNotifications(prev => 
             prev.map(n => n.id === payload.new.id ? payload.new as Notification : n)
           );
@@ -115,14 +110,10 @@ export default function NotificationBell() {
           table: 'notifications',
           filter: `user_id=eq.${user?.id}`
         }, (payload) => {
-          console.log('Notificación eliminada:', payload);
           setNotifications(prev => prev.filter(n => n.id !== payload.old.id));
         });
 
-      console.log('Iniciando suscripción...');
-      await newChannel.subscribe((status) => {
-        console.log('Estado de suscripción:', status);
-      });
+      await newChannel.subscribe();
 
       setChannel(newChannel);
     } catch (error) {

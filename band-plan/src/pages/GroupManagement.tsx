@@ -345,7 +345,7 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
                             toast.success('Preferencias de calendario actualizadas');
                             fetchGroupData();
                           } catch (error) {
-                            console.error('Error:', error);
+                            console.error('Error updating calendar preferences:', error);
                           }
                         }}
                         className="sr-only peer"
@@ -430,7 +430,6 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
         });
 
       if (uploadError) {
-        console.error('Upload error:', uploadError);
         throw uploadError;
       }
 
@@ -447,7 +446,7 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
         throw new Error('No se pudo generar el enlace público');
       }
     } catch (error) {
-      console.error('Error:', error);
+      console.error('Error generating calendar subscription URL:', error);
       if (error.message === 'new row violates row-level security policy') {
         toast.error('Error de permisos al generar el calendario. Por favor, contacta con el administrador.');
       } else {

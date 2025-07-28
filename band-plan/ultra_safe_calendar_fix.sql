@@ -1,3 +1,4 @@
+-- Ultra safe calendar function that avoids all JSON operations
 CREATE OR REPLACE FUNCTION public.get_group_calendar(
   p_group_id UUID,
   p_member_id UUID
@@ -11,6 +12,8 @@ DECLARE
   calendar_text TEXT;
   event_record RECORD;
   group_name TEXT;
+  safe_location TEXT;
+  safe_notes TEXT;
 BEGIN
   -- Obtener el nombre del grupo
   SELECT name INTO group_name
@@ -42,15 +45,15 @@ BEGIN
                   'X-LIC-LOCATION:Europe/Madrid' || chr(13) || chr(10) ||
                   'END:VTIMEZONE' || chr(13) || chr(10);
 
-  -- Obtener eventos
+  -- Obtener eventos con casting muy seguro
   FOR event_record IN 
     SELECT 
       e.id,
       e.name as event_name,
       e.date,
       e.time,
-      COALESCE(e.notes, '') as notes,
-      COALESCE(e.location, '') as venue_name,
+      e.notes,
+      e.location,
       g.name as band_name
     FROM events e
     JOIN event_members em ON em.event_id = e.id
@@ -59,6 +62,22 @@ BEGIN
     AND e.group_id = p_group_id
     ORDER BY e.date, e.time
   LOOP
+    -- Safely convert to text without any JSON operations
+    BEGIN
+      safe_notes := COALESCE(event_record.notes::text, '');
+    EXCEPTION WHEN OTHERS THEN
+      safe_notes := '';
+    END;
+    
+    BEGIN
+      safe_location := COALESCE(event_record.location::text, '');
+      -- Remove quotes if they exist
+      safe_location := regexp_replace(safe_location, '^"(.*)"$', '\1');
+      safe_location := regexp_replace(safe_location, '^''(.*)''$', '\1');
+    EXCEPTION WHEN OTHERS THEN
+      safe_location := '';
+    END;
+
     calendar_text := calendar_text ||
       'BEGIN:VEVENT' || chr(13) || chr(10) ||
       'UID:' || event_record.id || '@bandmanager.app' || chr(13) || chr(10) ||
@@ -67,14 +86,16 @@ BEGIN
       'DTEND;TZID=Europe/Madrid:' || to_char((event_record.date + event_record.time + interval '2 hours')::timestamp, 'YYYYMMDD"T"HH24MISS') || chr(13) || chr(10) ||
       'SUMMARY:' || event_record.band_name || ' - ' || event_record.event_name || chr(13) || chr(10);
 
-    IF event_record.venue_name != '' THEN
+    -- Add location if it exists
+    IF safe_location IS NOT NULL AND length(trim(safe_location)) > 0 THEN
       calendar_text := calendar_text ||
-        'LOCATION:' || event_record.venue_name || chr(13) || chr(10);
+        'LOCATION:' || trim(safe_location) || chr(13) || chr(10);
     END IF;
 
-    IF event_record.notes != '' THEN
+    -- Add notes if they exist
+    IF safe_notes IS NOT NULL AND length(trim(safe_notes)) > 0 THEN
       calendar_text := calendar_text ||
-        'DESCRIPTION:' || event_record.notes || chr(13) || chr(10);
+        'DESCRIPTION:' || trim(safe_notes) || chr(13) || chr(10);
     END IF;
 
     calendar_text := calendar_text ||
@@ -87,5 +108,5 @@ BEGIN
 END;
 $$;
 
--- Dar permisos de ejecución
+-- Grant execution permissions
 GRANT EXECUTE ON FUNCTION public.get_group_calendar(UUID, UUID) TO authenticated;

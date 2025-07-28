@@ -16,7 +16,6 @@ export default function ResetPassword() {
   // Efecto para verificar la sesión y el token de recuperación
   useEffect(() => {
     const checkAuthAndToken = async () => {
-      console.log('Verificando autenticación para reset de contraseña');
       
       try {
         // Verificar si tenemos una sesión de Supabase activa
@@ -33,20 +32,11 @@ export default function ResetPassword() {
         // Verificar si hay un token guardado en localStorage
         const storedToken = localStorage.getItem('recovery_token');
         
-        console.log('Verificando tokens de recuperación:', { 
-          urlToken: token?.substring(0, 10) + '...' || 'No presente', 
-          stateResetCode: resetCode ? 'Presente' : 'No presente',
-          storedToken: storedToken ? 'Presente' : 'No presente',
-          type 
-        });
-        console.log('Sesión activa:', !!data.session);
         
         // Comprobar si estamos en un flujo de recuperación válido (múltiples opciones)
         if (token && type === 'recovery') {
-          console.log('Token de recuperación válido detectado en URL');
           setCanResetPassword(true);
         } else if (resetCode) {
-          console.log('Código de recuperación detectado en state');
           setCanResetPassword(true);
           
           // Intentar verificar el código OTP
@@ -56,11 +46,9 @@ export default function ResetPassword() {
               type: 'recovery'
             });
           } catch (otpError) {
-            console.warn('Error al verificar OTP con resetCode:', otpError);
             // Continuamos aunque falle, ya que podríamos tener una sesión válida
           }
         } else if (storedToken) {
-          console.log('Token de recuperación encontrado en localStorage');
           setCanResetPassword(true);
           localStorage.removeItem('recovery_token'); // Limpiar después de usar
           
@@ -71,17 +59,14 @@ export default function ResetPassword() {
               type: 'recovery'
             });
           } catch (otpError) {
-            console.warn('Error al verificar OTP con storedToken:', otpError);
             // Continuamos aunque falle, ya que podríamos tener una sesión válida
           }
         } else if (data.session) {
           // Si hay una sesión activa y estamos en la página de reset, probablemente
           // el usuario ya ha sido autenticado por Supabase automáticamente
-          console.log('Sesión activa detectada, permitiendo reset de contraseña');
           setCanResetPassword(true);
         } else if (!resetSuccess) {
           // No hay token válido ni sesión activa
-          console.log('No hay token de recuperación válido ni sesión activa');
           navigate('/login');
         }
       } catch (error) {

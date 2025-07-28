@@ -162,16 +162,13 @@ export default function EventsList({
       if (deleteError) throw deleteError;
 
       if (eventMembers && eventMembers.length > 0) {
-        console.log('Actualizando calendarios después de eliminar evento');
         await Promise.all(
           eventMembers
             .filter(member => member.group_members.sync_calendar)
             .map(async (member) => {
               try {
                 await updateGroupCalendar(groupId, member.group_member_id);
-                console.log('Calendario actualizado para miembro:', member.group_member_id);
               } catch (error) {
-                console.error('Error actualizando calendario para miembro:', member.group_member_id, error);
               }
             })
         );
@@ -206,14 +203,12 @@ export default function EventsList({
 
   const setlist = event.setlist;
   if (!setlist) {
-    console.warn('Se intentó abrir un preview con un setlist undefined');
     return;
   }
 
   // store event info for modal
   setPreviewEventInfo({ name: event.name, date: event.date });
     if (!setlist) {
-      console.warn('Se intentó abrir un preview con un setlist undefined');
       return;
     }
 
@@ -270,7 +265,6 @@ export default function EventsList({
   const getLocationText = (location: string | undefined): string => {
     if (!location) return '';
     
-    console.log('Location raw:', location);
     
     // Si es un objeto directo (no un string)
     if (typeof location === 'object' && location !== null) {
@@ -287,7 +281,6 @@ export default function EventsList({
         const locationData = JSON.parse(location);
         return locationData.name || locationData.formatted_address || locationData.description || String(locationData);
       } catch (error) {
-        console.log('Location parse error:', error);
         return location;
       }
     }

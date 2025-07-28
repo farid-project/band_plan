@@ -41,7 +41,6 @@ export function useRealtimeSubscription({
           ...(filter && { filter })
         },
         (payload) => {
-          console.log(`Realtime ${payload.eventType} on ${table}:`, payload);
           
           // Call specific event handlers
           if (payload.eventType === 'INSERT' && onInsert) {
@@ -58,9 +57,7 @@ export function useRealtimeSubscription({
           }
         }
       )
-      .subscribe((status) => {
-        console.log(`Subscription ${channelName} status:`, status);
-      });
+      .subscribe();
 
     return () => {
       if (channelRef.current) {

@@ -16,11 +16,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   session: null,
   loading: true,
   setUser: (user) => {
-    console.log('Setting user in store:', user);
     set({ user });
   },
   setSession: (session) => {
-    console.log('Setting session in store:', session);
     set({ session });
   },
   signOut: async () => {
