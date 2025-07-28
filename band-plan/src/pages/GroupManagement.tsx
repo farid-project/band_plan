@@ -173,6 +173,7 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
             )
           `)
           .eq('group_id', id)
+          .order('member_type', { ascending: true })
           .order('role_in_group', { ascending: false })
           .order('name'),
         'Error loading members'
@@ -281,6 +282,18 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
                   <h3 className="font-medium text-gray-900 text-sm sm:text-base">
                     {member.name}
                   </h3>
+                  
+                  {/* Member Type Badge - with fallback */}
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    member.member_type === 'local'
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-blue-100 text-blue-700'
+                  }`}>
+                    {member.member_type === 'local' ? '🎭 Local' : 
+                     member.member_type === 'registered' ? '👤 Registrado' : '👤 Miembro'}
+                  </span>
+                  
+                  {/* Role Badge */}
                   <span className={`text-xs px-2 py-0.5 rounded-full ${
                     member.role_in_group === 'principal'
                       ? 'bg-indigo-100 text-indigo-700'
@@ -288,10 +301,19 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
                   }`}>
                     {member.role_in_group === 'principal' ? 'Principal' : 'Sustituto'}
                   </span>
-                  {!member.user_id && (
+                  
+                  {/* Unlinked Badge - with fallback */}
+                  {(!member.member_type || member.member_type === 'registered') && !member.user_id && (
                     <span className="text-xs text-gray-500">(Sin vincular)</span>
                   )}
                 </div>
+                
+                {/* Email for registered members */}
+                {(!member.member_type || member.member_type === 'registered') && member.email && (
+                  <div className="text-sm text-gray-600 mt-1">
+                    📧 {member.email}
+                  </div>
+                )}
                 {member.instruments.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-1">
                     {member.instruments.map((instrument, idx) => (

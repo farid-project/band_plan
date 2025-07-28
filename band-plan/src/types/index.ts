@@ -21,7 +21,9 @@ export interface GroupMember {
   group_id: string;
   user_id: string | null;
   name: string;
+  email?: string;
   role_in_group: 'principal' | 'sustituto';
+  member_type: 'registered' | 'local';
   created_by: string;
   roles?: Role[];
   sync_calendar?: boolean;
