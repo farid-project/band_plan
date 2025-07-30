@@ -45,7 +45,7 @@ export interface SpotifyPlaylist {
 
 class SpotifyService {
   private clientId = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
-  private redirectUri = import.meta.env.VITE_SPOTIFY_REDIRECT_URI;
+  private redirectUri = this.getRedirectUri();
   private scopes = [
     'user-read-private',
     'user-read-email',
@@ -70,6 +70,32 @@ class SpotifyService {
     // Subscribe to auth changes
     this.subscribeToAuthChanges();
     
+  }
+
+  private getRedirectUri(): string {
+    // Si tenemos una variable de entorno específica, úsala
+    if (import.meta.env.VITE_SPOTIFY_REDIRECT_URI) {
+      console.log('🎵 Using env redirect URI:', import.meta.env.VITE_SPOTIFY_REDIRECT_URI);
+      return import.meta.env.VITE_SPOTIFY_REDIRECT_URI;
+    }
+
+    // Detectar automáticamente basado en el hostname
+    const hostname = window.location.hostname;
+    const protocol = window.location.protocol;
+    const port = window.location.port;
+    let redirectUri: string;
+
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      // Desarrollo local
+      const portSuffix = port ? `:${port}` : '';
+      redirectUri = `${protocol}//${hostname}${portSuffix}/spotify/callback`;
+    } else {
+      // Producción - usa el dominio actual
+      redirectUri = `${protocol}//${hostname}/spotify/callback`;
+    }
+
+    console.log('🎵 Auto-detected redirect URI:', redirectUri);
+    return redirectUri;
   }
 
   // Authentication methods
