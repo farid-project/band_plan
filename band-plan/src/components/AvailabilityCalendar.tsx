@@ -1,12 +1,13 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue } from 'react';
 import { supabase } from '../lib/supabase';
 import { safeSupabaseRequest } from '../lib/supabaseUtils';
 import { useAuthStore } from '../store/authStore';
 import { DayPicker } from 'react-day-picker';
-import { format, isSameDay } from 'date-fns';
+import { format, isSameDay, startOfMonth, endOfMonth } from 'date-fns';
 // Eliminamos importaciones no utilizadas
 import { toast } from 'react-hot-toast';
-import { Loader2, ChevronDown, Music, Download } from 'lucide-react';
+import { Loader2, ChevronDown, Music, Download, FileText } from 'lucide-react';
+import jsPDF from 'jspdf';
 import 'react-day-picker/dist/style.css';
 import { GroupMember } from '../types';
 import { useParams } from 'react-router-dom';
@@ -124,7 +125,6 @@ export default function AvailabilityCalendar({
     }
   `;
   const { id: groupId } = useParams<{ id: string }>();
-  const [availabilities, setAvailabilities] = useState<MemberAvailability[]>([]);
   const [selectedDay, setSelectedDay] = useState<Date | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -135,16 +135,91 @@ export default function AvailabilityCalendar({
   const [groupEvents, setGroupEvents] = useState<MemberEvent[]>([]);
   const [memberExternalEvents, setMemberExternalEvents] = useState<{ user_id: string; date: string; }[]>([]);
   const { user } = useAuthStore();
+  
+  // CARGA PROGRESIVA POR MES: Solo carga datos del mes visible + precargar adyacentes
+  // Esto mejora significativamente el rendimiento inicial en grupos grandes
+  const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
+  const [loadedMonths, setLoadedMonths] = useState<Set<string>>(new Set());
+  const [monthlyAvailabilities, setMonthlyAvailabilities] = useState<Map<string, MemberAvailability[]>>(new Map());
+  
+  // Función para generar clave del mes
+  const getMonthKey = (date: Date) => format(date, 'yyyy-MM');
+  
+  // Usar deferred value para suavizar las transiciones
+  const deferredMonthlyAvailabilities = useDeferredValue(monthlyAvailabilities);
+  
+  // Combinar todas las availabilities cargadas para el procesamiento
+  const availabilities = useMemo(() => {
+    const combined: MemberAvailability[] = [];
+    const seenMembers = new Set<string>();
+    
+    deferredMonthlyAvailabilities.forEach((monthData) => {
+      monthData.forEach((memberAvailability) => {
+        const key = memberAvailability.memberId;
+        if (!seenMembers.has(key)) {
+          seenMembers.add(key);
+          combined.push({
+            ...memberAvailability,
+            dates: [] // Inicializar vacío
+          });
+        }
+      });
+    });
+    
+    // Combinar todas las fechas de todos los meses cargados
+    combined.forEach((memberAvailability) => {
+      const allDates: Date[] = [];
+      deferredMonthlyAvailabilities.forEach((monthData) => {
+        const matchingMember = monthData.find(m => m.memberId === memberAvailability.memberId);
+        if (matchingMember) {
+          allDates.push(...matchingMember.dates);
+        }
+      });
+      memberAvailability.dates = allDates;
+    });
+    
+    return combined;
+  }, [deferredMonthlyAvailabilities]);
 
 useEffect(() => {
   if (user) {
     checkAdminStatus();
-    fetchAllAvailabilities();
+    fetchAvailabilitiesForMonth(currentMonth);
     fetchGroupEvents();
     fetchMemberEvents();
     fetchMemberExternalEvents();
   }
 }, [user, groupId]);
+
+// Efecto para cargar datos cuando cambia el mes visible
+useEffect(() => {
+  if (!user) return;
+  
+  const monthKey = getMonthKey(currentMonth);
+  if (!loadedMonths.has(monthKey)) {
+    fetchAvailabilitiesForMonth(currentMonth);
+  }
+  
+  // Precargar mes anterior y siguiente para mejor UX
+  const prevMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1);
+  const nextMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
+  
+  const prevMonthKey = getMonthKey(prevMonth);
+  const nextMonthKey = getMonthKey(nextMonth);
+  
+  // Precargar de forma asíncrona sin bloquear
+  const timeoutId = setTimeout(() => {
+    if (!loadedMonths.has(prevMonthKey)) {
+      fetchAvailabilitiesForMonth(prevMonth);
+    }
+    if (!loadedMonths.has(nextMonthKey)) {
+      fetchAvailabilitiesForMonth(nextMonth);
+    }
+  }, 500); // Esperar 500ms para no interferir con la carga principal
+  
+  // Cleanup timeout si el componente se desmonta o cambia
+  return () => clearTimeout(timeoutId);
+}, [currentMonth, user, loadedMonths.size]); // Usar .size en lugar del Set completo
 
   // OPTIMIZACIÓN DE RENDIMIENTO: Sistema de caché inteligente para evitar recálculos
   // Los siguientes useMemo pre-calculan datos pesados una sola vez y los cachean
@@ -454,10 +529,20 @@ useEffect(() => {
   };
   
 
-  const fetchAllAvailabilities = async () => {
+  const fetchAvailabilitiesForMonth = async (targetMonth: Date) => {
     if (!groupId) return;
     
-    setLoading(true);
+    const monthKey = getMonthKey(targetMonth);
+    
+    // Si ya está cargado, no hacer nada
+    if (loadedMonths.has(monthKey)) {
+      return;
+    }
+    
+    // Solo mostrar loading general si es el primer mes o no hay meses cargados
+    if (loadedMonths.size === 0) {
+      setLoading(true);
+    }
     try {
       // Get availability for all members (both registered and local)
       const registeredMemberIds = members
@@ -474,7 +559,11 @@ useEffect(() => {
         date: string;
       }
 
-      // Fetch availability for both registered users and local members
+      // Calcular rango de fechas para el mes
+      const monthStart = format(startOfMonth(targetMonth), 'yyyy-MM-dd');
+      const monthEnd = format(endOfMonth(targetMonth), 'yyyy-MM-dd');
+
+      // Fetch availability for both registered users and local members, filtered by month
       const response = await safeSupabaseRequest(
         async () => {
           if (registeredMemberIds.length === 0 && localMemberIds.length === 0) {
@@ -483,7 +572,9 @@ useEffect(() => {
           
           let query = supabase
             .from('member_availability')
-            .select('user_id, group_member_id, date');
+            .select('user_id, group_member_id, date')
+            .gte('date', monthStart)
+            .lte('date', monthEnd);
           
           const conditions = [];
           if (registeredMemberIds.length > 0) {
@@ -499,11 +590,10 @@ useEffect(() => {
           
           return query.order('date');
         },
-        'Error fetching availabilities'
+        `Error fetching availabilities for ${monthKey}`
       );
 
       if (response) {
-        
         const formattedAvailabilities = members.map(member => {
           const availabilityItems = response
             .filter((item: AvailabilityData) => 
@@ -521,15 +611,16 @@ useEffect(() => {
             roleInBand: (member.role_in_group as 'principal' | 'sustituto') || 'principal'
           };
           
-          
           return memberAvailability;
         });
         
-        setAvailabilities(formattedAvailabilities);
+        // Actualizar el estado con los datos del mes específico
+        setMonthlyAvailabilities(prev => new Map(prev.set(monthKey, formattedAvailabilities)));
+        setLoadedMonths(prev => new Set(prev.add(monthKey)));
       }
     } catch (error) {
-      console.error('Error fetching availabilities:', error);
-      toast.error('Error al obtener las disponibilidades');
+      console.error(`Error fetching availabilities for ${monthKey}:`, error);
+      toast.error(`Error al obtener las disponibilidades de ${monthKey}`);
     } finally {
       setLoading(false);
     }
@@ -571,7 +662,7 @@ useEffect(() => {
       
       // Ejecutar las funciones existentes para cargar datos
       await Promise.all([
-        fetchAllAvailabilities(),
+        fetchAvailabilitiesForMonth(currentMonth),
         fetchMemberEvents(),
         fetchGroupEvents(),
         fetchMemberExternalEvents()
@@ -694,9 +785,19 @@ useEffect(() => {
           setSelectedDay(day);
           toast.success(`Fecha ${format(day, 'dd/MM/yyyy')} eliminada de la disponibilidad`);
           
-          // Update local state
-          setAvailabilities(prev => {
-            const updated = prev.map(avail => {
+          // Update local state using the new monthly system
+          const monthKey = getMonthKey(day);
+          setMonthlyAvailabilities(prev => {
+            const updated = new Map(prev);
+            let monthData = updated.get(monthKey);
+            
+            // If month is not loaded, ensure it's loaded first
+            if (!monthData) {
+              fetchAvailabilitiesForMonth(day);
+              return prev; // Return unchanged until data is loaded
+            }
+            
+            const updatedMonthData = monthData.map(avail => {
               if (avail.memberId === targetMember.id) {
                 const newDates = avail.dates.filter(d => !isSameDay(d, day));
                 return {
@@ -706,6 +807,7 @@ useEffect(() => {
               }
               return avail;
             });
+            updated.set(monthKey, updatedMonthData);
             return updated;
           });
           
@@ -740,9 +842,19 @@ useEffect(() => {
           setSelectedDay(day);
           toast.success(`Fecha ${format(day, 'dd/MM/yyyy')} añadida a la disponibilidad`);
           
-          // Update local state
-          setAvailabilities(prev => {
-            const updated = prev.map(avail => {
+          // Update local state using the new monthly system
+          const monthKey = getMonthKey(day);
+          setMonthlyAvailabilities(prev => {
+            const updated = new Map(prev);
+            let monthData = updated.get(monthKey);
+            
+            // If month is not loaded, ensure it's loaded first
+            if (!monthData) {
+              fetchAvailabilitiesForMonth(day);
+              return prev; // Return unchanged until data is loaded
+            }
+            
+            const updatedMonthData = monthData.map(avail => {
               if (avail.memberId === targetMember.id) {
                 const newDates = [...avail.dates, day];
                 return {
@@ -752,6 +864,7 @@ useEffect(() => {
               }
               return avail;
             });
+            updated.set(monthKey, updatedMonthData);
             return updated;
           });
           
@@ -1034,6 +1147,197 @@ useEffect(() => {
     window.URL.revokeObjectURL(url);
   };
 
+  const downloadAvailabilityPDF = () => {
+    // Filtrar solo fechas futuras y sin eventos
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Reset time to start of day
+    
+    const availableDatesWithoutEvents = groupAvailableDatesCalculated
+      .filter(date => date >= today) // Solo fechas futuras
+      .filter(date => getEventsForDate(date).length === 0)
+      .sort((a, b) => a.getTime() - b.getTime());
+
+    // Agrupar fechas por mes
+    const datesByMonth = availableDatesWithoutEvents.reduce((acc, date) => {
+      const monthKey = format(date, 'MMMM yyyy', { locale: es });
+      if (!acc[monthKey]) {
+        acc[monthKey] = {
+          withPrincipals: [],
+          withSubstitutes: []
+        };
+      }
+
+      const membersForDay = getMembersForDay(date);
+      const unavailablePrincipals = members
+        .filter(m => m.role_in_group === 'principal')
+        .filter(principal => !membersForDay.some(m => m.user_id === principal.user_id));
+
+      if (unavailablePrincipals.length === 0) {
+        acc[monthKey].withPrincipals.push(date);
+      } else {
+        acc[monthKey].withSubstitutes.push(date);
+      }
+
+      return acc;
+    }, {} as Record<string, { withPrincipals: Date[], withSubstitutes: Date[] }>);
+
+    // Crear PDF con diseño minimalista
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 25;
+    let yPosition = margin;
+
+    // Header minimalista
+    pdf.setFontSize(24);
+    pdf.setFont('helvetica', 'light');
+    pdf.setTextColor(40, 40, 40);
+    pdf.text(groupName, margin, yPosition);
+    yPosition += 12;
+
+    // Subtítulo elegante
+    pdf.setFontSize(11);
+    pdf.setFont('helvetica', 'normal');
+    pdf.setTextColor(120, 120, 120);
+    pdf.text('FECHAS DISPONIBLES', margin, yPosition);
+    yPosition += 6;
+
+    // Fecha de generación discreta
+    pdf.setFontSize(9);
+    pdf.setTextColor(160, 160, 160);
+    pdf.text(format(new Date(), 'dd MMMM yyyy', { locale: es }), margin, yPosition);
+    
+    // Línea sutil
+    yPosition += 8;
+    pdf.setDrawColor(230, 230, 230);
+    pdf.setLineWidth(0.3);
+    pdf.line(margin, yPosition, pageWidth - margin, yPosition);
+    yPosition += 20;
+
+    // Verificar si hay fechas disponibles
+    if (Object.keys(datesByMonth).length === 0) {
+      pdf.setFontSize(12);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(120, 120, 120);
+      pdf.text('No hay fechas disponibles próximas.', margin, yPosition);
+    } else {
+      // Procesar cada mes con diseño elegante
+      Object.entries(datesByMonth).forEach(([month, dates], index) => {
+        // Verificar si necesitamos nueva página
+        if (yPosition > pageHeight - 80) {
+          pdf.addPage();
+          yPosition = margin + 40; // Menos margen superior en páginas adicionales
+        }
+
+        // Título del mes elegante
+        pdf.setFontSize(14);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setTextColor(60, 60, 60);
+        pdf.text(month.charAt(0).toUpperCase() + month.slice(1), margin, yPosition);
+        yPosition += 12;
+
+        // Contenedor visual sutil
+        const sectionStartY = yPosition;
+
+        // Fechas principales (prioritarias)
+        if (dates.withPrincipals.length > 0) {
+          const principalDatesFormatted = dates.withPrincipals
+            .map(date => format(date, 'd (EEE)', { locale: es }))
+            .join(' • ');
+          
+          pdf.setFontSize(18);
+          pdf.setFont('helvetica', 'light');
+          pdf.setTextColor(40, 40, 40);
+          
+          const splitText = pdf.splitTextToSize(principalDatesFormatted, pageWidth - 2 * margin);
+          pdf.text(splitText, margin, yPosition);
+          yPosition += splitText.length * 8 + 2;
+          
+          // Etiqueta discreta para fechas principales
+          pdf.setFontSize(8);
+          pdf.setFont('helvetica', 'normal');
+          pdf.setTextColor(100, 180, 100);
+          pdf.text('FORMACIÓN COMPLETA', margin, yPosition);
+          yPosition += 8;
+        }
+
+        // Fechas con sustitutos (menos prominentes)
+        if (dates.withSubstitutes.length > 0) {
+          if (dates.withPrincipals.length > 0) {
+            yPosition += 4; // Espacio adicional si hay ambos tipos
+          }
+          
+          const substituteDatesFormatted = dates.withSubstitutes
+            .map(date => format(date, 'd (EEE)', { locale: es }))
+            .join(' • ');
+          
+          pdf.setFontSize(14);
+          pdf.setFont('helvetica', 'light');
+          pdf.setTextColor(120, 120, 120);
+          
+          const splitText = pdf.splitTextToSize(substituteDatesFormatted, pageWidth - 2 * margin);
+          pdf.text(splitText, margin, yPosition);
+          yPosition += splitText.length * 6 + 2;
+          
+          // Etiqueta discreta para fechas con sustitutos
+          pdf.setFontSize(8);
+          pdf.setFont('helvetica', 'normal');
+          pdf.setTextColor(180, 140, 100);
+          pdf.text('CON SUSTITUTOS', margin, yPosition);
+          yPosition += 8;
+        }
+
+        // Línea separadora sutil entre meses (excepto el último)
+        if (index < Object.keys(datesByMonth).length - 1) {
+          yPosition += 8;
+          pdf.setDrawColor(245, 245, 245);
+          pdf.setLineWidth(0.2);
+          pdf.line(margin, yPosition, pageWidth - margin, yPosition);
+          yPosition += 16;
+        } else {
+          yPosition += 12;
+        }
+      });
+
+      // Footer minimalista con contacto
+      yPosition += 15;
+      
+      // Información de contacto discreta (si tienes estos datos disponibles)
+      pdf.setFontSize(9);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(160, 160, 160);
+      
+      const totalIdealDates = Object.values(datesByMonth).reduce((sum, dates) => sum + dates.withPrincipals.length, 0);
+      const totalSubstituteDates = Object.values(datesByMonth).reduce((sum, dates) => sum + dates.withSubstitutes.length, 0);
+      
+      if (totalIdealDates > 0 || totalSubstituteDates > 0) {
+        pdf.text(`${totalIdealDates + totalSubstituteDates} fechas disponibles`, margin, pageHeight - 25);
+      }
+    }
+
+    // Footer elegante y discreto
+    const totalPages = pdf.internal.pages.length - 1;
+    for (let i = 1; i <= totalPages; i++) {
+      pdf.setPage(i);
+      pdf.setFontSize(8);
+      pdf.setFont('helvetica', 'normal');
+      pdf.setTextColor(200, 200, 200);
+      if (totalPages > 1) {
+        pdf.text(`${i}`, pageWidth - margin, pageHeight - 15);
+      }
+    }
+
+    // Abrir PDF en nueva pestaña
+    const pdfBlob = pdf.output('blob');
+    const pdfUrl = URL.createObjectURL(pdfBlob);
+    window.open(pdfUrl, '_blank');
+    
+    // Limpiar la URL después de un tiempo para liberar memoria
+    setTimeout(() => {
+      URL.revokeObjectURL(pdfUrl);
+    }, 1000);
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center py-8">
@@ -1090,8 +1394,12 @@ useEffect(() => {
         <DayPicker
           mode="single"
           selected={selectedDay}
+          month={currentMonth}
           onSelect={setSelectedDay}
           onDayClick={handleDayClick}
+          onMonthChange={(month) => {
+            setCurrentMonth(month);
+          }}
           modifiersClassNames={{
             selected: 'rdp-day_selected'
           }}
@@ -1156,13 +1464,22 @@ useEffect(() => {
       </div>
 
       <div className="flex justify-between items-center">
-        <button
-          onClick={downloadAvailabilityDates}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-        >
-          <Download className="w-4 h-4 mr-2" />
-          Descargar Fechas Disponibles del Grupo
-        </button>
+        <div className="flex space-x-3">
+          <button
+            onClick={downloadAvailabilityPDF}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            <FileText className="w-4 h-4 mr-2" />
+            Ver PDF
+          </button>
+          <button
+            onClick={downloadAvailabilityDates}
+            className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Descargar TXT
+          </button>
+        </div>
       </div>
     </div>
   );
