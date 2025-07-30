@@ -41,6 +41,9 @@ export interface SpotifyPlaylist {
     spotify: string;
   };
   images: { url: string }[];
+  tracks: {
+    total: number;
+  };
 }
 
 class SpotifyService {
@@ -403,8 +406,15 @@ class SpotifyService {
   }
 
   async getUserPlaylists(limit: number = 50): Promise<SpotifyPlaylist[]> {
-    const response = await this.apiRequest<{ items: SpotifyPlaylist[] }>(`/me/playlists?limit=${limit}`);
-    return response.items;
+    const response = await this.apiRequest<{ items: any[] }>(`/me/playlists?limit=${limit}`);
+    return response.items.map((playlist: any) => ({
+      id: playlist.id,
+      name: playlist.name,
+      description: playlist.description || '',
+      external_urls: playlist.external_urls,
+      images: playlist.images || [],
+      tracks: playlist.tracks || { total: 0 }
+    }));
   }
 
   async getPlaylistTracks(playlistId: string, limit: number = 100): Promise<SpotifyTrack[]> {
@@ -677,6 +687,7 @@ class SpotifyService {
       return false;
     }
   }
+
 }
 
 export const spotifyService = new SpotifyService();

@@ -40,6 +40,7 @@ import { CSS } from '@dnd-kit/utilities';
 import CreateMedleyModal from './CreateMedleyModal';
 import MedleyItem from './MedleyItem';
 import ImportPlaylistModal from './ImportPlaylistModal';
+import SpotifyPlaylistSyncModal from './SpotifyPlaylistSyncModal';
 import { useSpotify } from '../hooks/useSpotify';
 import { SpotifyTrack } from '../services/spotifyService';
 
@@ -158,6 +159,7 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
 
   const [showCreateMedleyModal, setShowCreateMedleyModal] = useState(false);
   const [showImportPlaylistModal, setShowImportPlaylistModal] = useState(false);
+  const [showSpotifySyncModal, setShowSpotifySyncModal] = useState(false);
 
   // Spotify integration
   const { isAuthenticated, createPlaylistFromSetlist, searchTracks } = useSpotify();
@@ -871,6 +873,13 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
                                <span className="hidden sm:inline">Crear Medley</span>
                                <span className="sm:hidden">Medley</span>
                            </Button>
+                           {isAuthenticated && (
+                               <Button variant="secondary" onClick={() => setShowSpotifySyncModal(true)} size="sm" className="w-full sm:w-auto">
+                                   <FaSpotify className="mr-1" /> 
+                                   <span className="hidden sm:inline">Sincronizar Spotify</span>
+                                   <span className="sm:hidden">Spotify</span>
+                               </Button>
+                           )}
                             <Button variant="secondary" onClick={() => handleEdit(selectedSetlist)} size="sm" className="w-full sm:w-auto">
                                 <FaEdit className="mr-2" /> Editar
                             </Button>
@@ -1063,6 +1072,19 @@ export default function SetlistManagement({ groupId, canManageSetlists = true }:
           onSetlistCreated={() => {
             loadData();
             setShowImportPlaylistModal(false);
+          }}
+        />
+      )}
+
+      {showSpotifySyncModal && selectedSetlist && (
+        <SpotifyPlaylistSyncModal
+          isOpen={showSpotifySyncModal}
+          onClose={() => setShowSpotifySyncModal(false)}
+          groupId={groupId}
+          setlistId={selectedSetlist.id}
+          onSongsAdded={() => {
+            loadData();
+            setShowSpotifySyncModal(false);
           }}
         />
       )}
