@@ -76,6 +76,11 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
   const [filterKey, setFilterKey] = useState('');
   const [filterType, setFilterType] = useState('');
   
+  // Multiple selection state
+  const [selectedSongs, setSelectedSongs] = useState<Set<string>>(new Set());
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  
   // Spotify integration
   const { isAuthenticated } = useSpotify();
 
@@ -102,6 +107,11 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
   useEffect(() => {
     loadSongs();
   }, [groupId]);
+
+  // Clear selection when filters change
+  useEffect(() => {
+    setSelectedSongs(new Set());
+  }, [searchText, filterKey, filterType]);
 
   // Real-time subscription for songs
   useRealtimeSubscription({
@@ -327,6 +337,70 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
     }
   };
 
+  // Multiple selection functions
+  const handleSongSelect = (songId: string, checked: boolean) => {
+    const newSelected = new Set(selectedSongs);
+    if (checked) {
+      newSelected.add(songId);
+    } else {
+      newSelected.delete(songId);
+    }
+    setSelectedSongs(newSelected);
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      const allSongIds = filteredSongs.map(song => song.id);
+      setSelectedSongs(new Set(allSongIds));
+    } else {
+      setSelectedSongs(new Set());
+    }
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedSongs.size === 0) return;
+    setShowBulkDeleteModal(true);
+  };
+
+  const confirmBulkDelete = async () => {
+    setBulkDeleting(true);
+    let deletedCount = 0;
+    let failedCount = 0;
+
+    try {
+      // Delete songs one by one
+      for (const songId of selectedSongs) {
+        const success = await deleteSong(songId);
+        if (success) {
+          deletedCount++;
+        } else {
+          failedCount++;
+        }
+      }
+
+      // Update local state
+      setSongs(prevSongs => prevSongs.filter(song => !selectedSongs.has(song.id)));
+      setSelectedSongs(new Set());
+
+      // Show result
+      if (failedCount === 0) {
+        toast.success(`${deletedCount} canciones eliminadas correctamente`);
+      } else {
+        toast.error(`${deletedCount} canciones eliminadas, ${failedCount} fallaron`);
+      }
+    } catch (error) {
+      console.error('Error in bulk delete:', error);
+      toast.error('Error al eliminar las canciones');
+    } finally {
+      setBulkDeleting(false);
+      setShowBulkDeleteModal(false);
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedSongs(new Set());
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -471,9 +545,35 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
           <div className="overflow-x-auto">
             <div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <span className="text-sm text-gray-600">
-                  Mostrando {filteredSongs.length} de {songs.length} canciones
-                </span>
+                <div className="flex items-center gap-4">
+                  <span className="text-sm text-gray-600">
+                    Mostrando {filteredSongs.length} de {songs.length} canciones
+                  </span>
+                  {selectedSongs.size > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-blue-600 font-medium">
+                        {selectedSongs.size} seleccionadas
+                      </span>
+                      {canManageSongs && (
+                        <div className="flex gap-1">
+                          <button
+                            onClick={handleBulkDelete}
+                            className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded hover:bg-red-200 transition-colors"
+                            disabled={bulkDeleting}
+                          >
+                            {bulkDeleting ? 'Eliminando...' : 'Eliminar seleccionadas'}
+                          </button>
+                          <button
+                            onClick={clearSelection}
+                            className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded hover:bg-gray-200 transition-colors"
+                          >
+                            Limpiar selección
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
                 
                 {/* Mini Filters */}
                 <div className="flex flex-wrap items-center gap-2 text-xs">
@@ -512,6 +612,16 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
+                  {canManageSongs && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
+                      <input
+                        type="checkbox"
+                        checked={filteredSongs.length > 0 && filteredSongs.every(song => selectedSongs.has(song.id))}
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </th>
+                  )}
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Título
                   </th>
@@ -534,7 +644,17 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredSongs.map((song) => (
-                  <tr key={song.id} className="hover:bg-gray-50">
+                  <tr key={song.id} className={`hover:bg-gray-50 ${selectedSongs.has(song.id) ? 'bg-blue-50' : ''}`}>
+                    {canManageSongs && (
+                      <td className="px-6 py-4 whitespace-nowrap align-top">
+                        <input
+                          type="checkbox"
+                          checked={selectedSongs.has(song.id)}
+                          onChange={(e) => handleSongSelect(song.id, e.target.checked)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </td>
+                    )}
                     <td className="px-6 py-4 whitespace-nowrap align-top">
                       {editingCell?.songId === song.id && editingCell.field === 'title' ? (
                         <input
@@ -688,6 +808,36 @@ export default function SongManagement({ groupId, canManageSongs = true }: SongM
                 onClick={confirmDelete}
               >
                 Eliminar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      {showBulkDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">
+              Confirmar Eliminación Múltiple
+            </h3>
+            <p className="text-gray-600 mb-6">
+              ¿Estás seguro de que quieres eliminar las <strong>{selectedSongs.size}</strong> canciones seleccionadas? Esta acción no se puede deshacer.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button
+                variant="secondary"
+                onClick={() => setShowBulkDeleteModal(false)}
+                disabled={bulkDeleting}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="danger"
+                onClick={confirmBulkDelete}
+                disabled={bulkDeleting}
+              >
+                {bulkDeleting ? 'Eliminando...' : `Eliminar ${selectedSongs.size} canciones`}
               </Button>
             </div>
           </div>
