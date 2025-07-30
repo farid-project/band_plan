@@ -190,9 +190,11 @@ class SpotifyService {
       this.accessToken = data.access_token;
       this.refreshToken = data.refresh_token;
       this.tokenExpiry = Date.now() + (data.expires_in * 1000);
-      console.log('🎵 SpotifyService: Tokens stored in memory, saving to localStorage...');
+      console.log('🎵 SpotifyService: Tokens stored in memory, saving to storage...');
 
-      this.saveTokensToStorage();
+      await this.saveTokensToStorage();
+      console.log('🎵 SpotifyService: Tokens saved to storage, cleaning up...');
+      
       localStorage.removeItem('spotify_auth_state');
       localStorage.removeItem('spotify_code_verifier');
       console.log('🎵 SpotifyService: Auth callback completed successfully!');
@@ -431,15 +433,19 @@ class SpotifyService {
 
   // Modificar los métodos de almacenamiento
   private async saveTokensToStorage(): Promise<void> {
+    console.log('🎵 saveTokensToStorage: Starting...');
     const { user } = useAuthStore.getState();
+    console.log('🎵 saveTokensToStorage: User check:', { hasUser: !!user, userId: user?.id });
     
     if (!user) {
+      console.log('🎵 saveTokensToStorage: No user, falling back to localStorage');
       // Fallback a localStorage si no hay usuario autenticado
       this.saveTokensToLocalStorage();
       return;
     }
 
     try {
+      console.log('🎵 saveTokensToStorage: Attempting database save...');
       const { error } = await supabase
         .from('spotify_tokens')
         .upsert({
@@ -447,12 +453,18 @@ class SpotifyService {
           access_token: this.accessToken,
           refresh_token: this.refreshToken,
           expires_at: new Date(this.tokenExpiry!).toISOString()
+        }, {
+          onConflict: 'user_id'
         });
 
-      if (error) throw error;
+      if (error) {
+        console.error('🎵 saveTokensToStorage: Database error:', error);
+        throw error;
+      }
       console.log('✅ Spotify tokens saved to database');
     } catch (error) {
       console.error('Error saving tokens to database:', error);
+      console.log('🎵 saveTokensToStorage: Falling back to localStorage due to error');
       // Fallback a localStorage
       this.saveTokensToLocalStorage();
     }

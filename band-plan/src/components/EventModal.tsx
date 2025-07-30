@@ -37,7 +37,17 @@ interface EventMember {
   userId: string | null;
   selected: boolean;
   isAvailable: boolean;
+  isBusyInOtherEvent: boolean;
+  wasInitiallyAvailable: boolean;
   sync_calendar: boolean;
+}
+
+interface LocationResult {
+  display_name: string;
+  lat: string;
+  lon: string;
+  type: string;
+  class: string;
 }
 
 // Añadir esta variable fuera del componente
@@ -62,8 +72,8 @@ export default function EventModal({
   const [validationError, setValidationError] = useState(false);
   const { user } = useAuthStore();
   const [location, setLocation] = useState('');
-  const [locationResults, setLocationResults] = useState<Location[]>([]);
-  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+  const [locationResults, setLocationResults] = useState<LocationResult[]>([]);
+  const [selectedLocation, setSelectedLocation] = useState<LocationResult | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [events, setEvents] = useState<Event[]>([]);
   const [setlists, setSetlists] = useState<Setlist[]>([]);
@@ -75,17 +85,40 @@ export default function EventModal({
       setDate(event.date);
       setTime(event.time);
       setNotes(event.notes || '');
-      setLocation(event.location || '');
-      setSelectedSetlistId(event.setlist_id || '');
+      // Handle location - it might be a string or an object
       if (event.location) {
-        setSelectedLocation({
-          display_name: event.location,
-          lat: '',
-          lon: '',
-          type: '',
-          class: ''
-        });
+        if (typeof event.location === 'string') {
+          setLocation(event.location);
+          setSelectedLocation({
+            display_name: event.location,
+            lat: '',
+            lon: '',
+            type: '',
+            class: ''
+          });
+        } else if (typeof event.location === 'object' && event.location !== null) {
+          // Handle case where location is stored as an object
+          const locationObj = event.location as any;
+          if (locationObj.display_name) {
+            setLocation(locationObj.display_name);
+            setSelectedLocation(locationObj);
+          } else if (locationObj.name) {
+            // Handle {name, coordinates} format
+            setLocation(locationObj.name);
+            setSelectedLocation({
+              display_name: locationObj.name,
+              lat: locationObj.coordinates?.lat || '',
+              lon: locationObj.coordinates?.lon || '',
+              type: '',
+              class: ''
+            });
+          }
+        }
+      } else {
+        setLocation('');
+        setSelectedLocation(null);
       }
+      setSelectedSetlistId(event.setlist_id || '');
       loadEventMembers();
     } else if (selectedDate) {
       const formattedDate = format(selectedDate, 'yyyy-MM-dd');
@@ -165,17 +198,23 @@ export default function EventModal({
         const selectedMemberIds = new Set(eventMembers.map(em => em.group_member_id));
 
         // Crear lista de miembros con su disponibilidad y estado de selección
-        const membersList = members.map(member => ({
-          memberId: member.id,
-          userId: member.user_id,
-          selected: selectedMemberIds.has(member.id),
-          isAvailable: selectedMemberIds.has(member.id) || (
-            member.user_id ? (
-              availableUserIds.has(member.user_id) && !busyMembers.has(member.user_id)
-            ) : true // Local members (without user_id) are always available
-          ),
-          sync_calendar: member.sync_calendar || false
-        }));
+        const membersList = members.map(member => {
+          const wasInitiallyAvailable = member.user_id ? 
+            availableUserIds.has(member.user_id) : true;
+          const isBusyInOtherEvent = member.user_id ? 
+            busyMembers.has(member.user_id) : false;
+          const isSelected = selectedMemberIds.has(member.id);
+          
+          return {
+            memberId: member.id,
+            userId: member.user_id,
+            selected: isSelected,
+            isAvailable: isSelected || (wasInitiallyAvailable && !isBusyInOtherEvent),
+            isBusyInOtherEvent,
+            wasInitiallyAvailable,
+            sync_calendar: member.sync_calendar || false
+          };
+        });
 
         setSelectedMembers(membersList);
       }
@@ -221,9 +260,11 @@ export default function EventModal({
 
       // Create the list of members with their availability status
       const membersList = members.map(member => {
-        const isAvailable = member.user_id ? (
-          availableUserIds.has(member.user_id) && !busyMembers.has(member.user_id)
-        ) : true; // Local members (without user_id) are always available
+        const wasInitiallyAvailable = member.user_id ? 
+          availableUserIds.has(member.user_id) : true; // Local members are always considered available
+        const isBusyInOtherEvent = member.user_id ? 
+          busyMembers.has(member.user_id) : false;
+        const isAvailable = wasInitiallyAvailable && !isBusyInOtherEvent;
 
         return {
           memberId: member.id,
@@ -233,6 +274,8 @@ export default function EventModal({
             preSelectedMemberIds.includes(member.id) : 
             (member.role_in_group === 'principal' && isAvailable),
           isAvailable,
+          isBusyInOtherEvent,
+          wasInitiallyAvailable,
           sync_calendar: member.sync_calendar || false
         };
       });
@@ -446,6 +489,47 @@ export default function EventModal({
             .insert(eventMembers);
 
           if (memberError) throw memberError;
+        }
+
+        // Añadir disponibilidad para miembros que no estaban inicialmente disponibles
+        const membersToAddAvailability = selectedMembers
+          .filter(member => 
+            member.selected && 
+            member.userId && 
+            !member.wasInitiallyAvailable
+          )
+          .map(member => ({
+            user_id: member.userId,
+            date: date
+          }));
+
+        if (membersToAddAvailability.length > 0) {
+          // Verificar primero qué disponibilidades ya existen para evitar duplicados
+          const { data: existingAvailability } = await supabase
+            .from('member_availability')
+            .select('user_id, date')
+            .in('user_id', membersToAddAvailability.map(m => m.user_id))
+            .eq('date', date);
+
+          const existingSet = new Set(
+            (existingAvailability || []).map(a => `${a.user_id}-${a.date}`)
+          );
+
+          // Filtrar solo las disponibilidades que no existen
+          const newAvailabilities = membersToAddAvailability.filter(
+            availability => !existingSet.has(`${availability.user_id}-${availability.date}`)
+          );
+
+          if (newAvailabilities.length > 0) {
+            const { error: availabilityError } = await supabase
+              .from('member_availability')
+              .insert(newAvailabilities);
+
+            if (availabilityError) {
+              console.error('Error adding availability:', availabilityError);
+              // No lanzamos error aquí para no bloquear el guardado del evento
+            }
+          }
         }
 
         // Actualizar calendarios
@@ -700,12 +784,12 @@ export default function EventModal({
                   <MapPin className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
                     <span className="block text-sm font-medium text-gray-900">
-                      {typeof selectedLocation.display_name === 'string' && selectedLocation.display_name.includes(',')
+                      {selectedLocation?.display_name && typeof selectedLocation.display_name === 'string' && selectedLocation.display_name.includes(',')
                         ? selectedLocation.display_name.split(',')[0]
-                        : selectedLocation.display_name}
+                        : selectedLocation?.display_name || 'Unknown location'}
                     </span>
                     <span className="block text-sm text-gray-500 mt-1">
-                      {typeof selectedLocation.display_name === 'string' && selectedLocation.display_name.includes(',')
+                      {selectedLocation?.display_name && typeof selectedLocation.display_name === 'string' && selectedLocation.display_name.includes(',')
                         ? selectedLocation.display_name.split(',').slice(1).join(',').trim()
                         : ''}
                     </span>

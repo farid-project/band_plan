@@ -64,10 +64,16 @@ export default function GroupStatistics({ groupId, members }: GroupStatisticsPro
 
       setAvailabilities(transformedAvailabilities);
 
-      // Fetch events
+      // Fetch events with event_members
       const { data: eventsData, error: eventsError } = await supabase
         .from('events')
-        .select('*')
+        .select(`
+          *,
+          event_members (
+            group_member_id,
+            user_id
+          )
+        `)
         .eq('group_id', groupId)
         .order('date', { ascending: false });
 
@@ -179,7 +185,7 @@ export default function GroupStatistics({ groupId, members }: GroupStatisticsPro
     };
   }, [events]);
 
-  const memberParticipationData = useMemo(() => {
+  const memberAvailabilityData = useMemo(() => {
     const memberAvailabilityMap = new Map<string, number>();
     
     members.forEach(member => {
@@ -193,6 +199,32 @@ export default function GroupStatistics({ groupId, members }: GroupStatisticsPro
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10); // Top 10 most active members
   }, [members, availabilities]);
+
+  const memberEventParticipationData = useMemo(() => {
+    const memberEventMap = new Map<string, number>();
+    
+    // Initialize all members with 0 events
+    members.forEach(member => {
+      memberEventMap.set(member.name, 0);
+    });
+
+    // Count events for each member using event_members
+    events.forEach(event => {
+      if (event.event_members && event.event_members.length > 0) {
+        event.event_members.forEach(eventMember => {
+          const member = members.find(m => m.id === eventMember.group_member_id);
+          if (member) {
+            const currentCount = memberEventMap.get(member.name) || 0;
+            memberEventMap.set(member.name, currentCount + 1);
+          }
+        });
+      }
+    });
+
+    return Array.from(memberEventMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10); // Top 10 most participating members
+  }, [members, events]);
 
   if (loading) {
     return (
@@ -344,17 +376,17 @@ export default function GroupStatistics({ groupId, members }: GroupStatisticsPro
           </div>
         </div>
 
-        {/* Member Participation Chart */}
-        <div className="bg-white rounded-lg shadow-md p-6 lg:col-span-2">
+        {/* Member Availability Chart */}
+        <div className="bg-white rounded-lg shadow-md p-6">
           <div className="flex items-center mb-4">
-            <Users className="w-5 h-5 text-indigo-600 mr-2" />
-            <h3 className="text-lg font-semibold text-gray-900">Participación por Miembro</h3>
+            <Calendar className="w-5 h-5 text-indigo-600 mr-2" />
+            <h3 className="text-lg font-semibold text-gray-900">Disponibilidad por Miembro</h3>
             <span className="ml-2 text-sm text-gray-500">(últimos 6 meses)</span>
           </div>
-          {memberParticipationData.length > 0 ? (
+          {memberAvailabilityData.length > 0 ? (
             <div className="space-y-3">
-              {memberParticipationData.map(([memberName, count], index) => {
-                const maxCount = Math.max(...memberParticipationData.map(([, c]) => c));
+              {memberAvailabilityData.map(([memberName, count], index) => {
+                const maxCount = Math.max(...memberAvailabilityData.map(([, c]) => c));
                 const percentage = maxCount > 0 ? (count / maxCount) * 100 : 0;
                 
                 return (
@@ -381,8 +413,51 @@ export default function GroupStatistics({ groupId, members }: GroupStatisticsPro
             </div>
           ) : (
             <div className="text-center py-8 text-gray-500">
+              <Calendar className="w-12 h-12 mx-auto mb-2 text-gray-400" />
+              <p>No hay datos de disponibilidad</p>
+            </div>
+          )}
+        </div>
+
+        {/* Member Event Participation Chart */}
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <div className="flex items-center mb-4">
+            <Users className="w-5 h-5 text-purple-600 mr-2" />
+            <h3 className="text-lg font-semibold text-gray-900">Participación en Eventos</h3>
+            <span className="ml-2 text-sm text-gray-500">(todos los eventos)</span>
+          </div>
+          {memberEventParticipationData.length > 0 ? (
+            <div className="space-y-3">
+              {memberEventParticipationData.map(([memberName, count], index) => {
+                const maxCount = Math.max(...memberEventParticipationData.map(([, c]) => c));
+                const percentage = maxCount > 0 ? (count / maxCount) * 100 : 0;
+                
+                return (
+                  <div key={memberName} className="flex items-center space-x-3">
+                    <div className="w-24 text-sm text-gray-600 truncate" title={memberName}>
+                      {memberName}
+                    </div>
+                    <div className="flex-1 bg-gray-200 rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full ${
+                          index === 0 ? 'bg-purple-500' :
+                          index === 1 ? 'bg-pink-500' :
+                          index === 2 ? 'bg-orange-500' : 'bg-gray-400'
+                        }`}
+                        style={{ width: `${percentage}%` }}
+                      ></div>
+                    </div>
+                    <div className="text-sm font-medium text-gray-700 w-16 text-right">
+                      {count} evento{count !== 1 ? 's' : ''}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
               <Users className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-              <p>No hay datos de participación disponibles</p>
+              <p>No hay datos de eventos disponibles</p>
             </div>
           )}
         </div>

@@ -119,12 +119,19 @@ export interface Event {
   time: string;
   group_id: string;
   notes?: string;
-  location?: string;
+  location?: string | any; // Can be string or object
   setlist_id?: string;
+  selected_members?: string[];
+  event_members?: EventMember[];
   created_by: string;
   created_at: string;
   updated_at: string;
   setlist?: Setlist;
+}
+
+export interface EventMember {
+  group_member_id: string;
+  user_id: string | null;
 }
 
 export interface MemberAvailability {
