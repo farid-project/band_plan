@@ -126,3 +126,11 @@ export interface Event {
   updated_at: string;
   setlist?: Setlist;
 }
+
+export interface MemberAvailability {
+  id: number;
+  user_id: string;
+  date: string;
+  created_at: string;
+  updated_at: string;
+}

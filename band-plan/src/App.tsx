@@ -90,6 +90,11 @@ function AppContent() {
               <GroupManagement defaultTab="setlists" />
             </ProtectedRoute>
           } />
+          <Route path="/group/:id/statistics" element={
+            <ProtectedRoute>
+              <GroupManagement defaultTab="statistics" />
+            </ProtectedRoute>
+          } />
           <Route path="/privacy-policy" element={<PrivacyPolicy />} />
           <Route path="/spotify/callback" element={<SpotifyCallback />} />
         </Routes>

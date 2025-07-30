@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Group, GroupMember, Instrument } from '../types';
 import Button from '../components/Button';
-import { Plus, Music, User, Edit2, Calendar, Loader2, Trash2, ListMusic } from 'lucide-react';
+import { Plus, Music, User, Edit2, Calendar, Loader2, Trash2, ListMusic, BarChart3 } from 'lucide-react';
 import AddMemberModal from '../components/AddMemberModal';
 import EditMemberModal from '../components/EditMemberModal';
 import { toast } from 'react-hot-toast';
@@ -16,6 +16,7 @@ import CalendarInstructionsModal from '../components/CalendarInstructionsModal';
 import SetlistPage from '../components/SetlistPage';
 import { useRealtimeSubscription } from '../hooks/useRealtimeSubscription';
 import { MemberSkeleton } from '../components/Skeleton';
+import GroupStatistics from '../components/GroupStatistics';
 
 interface ExtendedGroupMember extends GroupMember {
   instruments: {
@@ -25,7 +26,7 @@ interface ExtendedGroupMember extends GroupMember {
 }
 
 interface GroupManagementProps {
-  defaultTab?: 'overview' | 'songs' | 'setlists';
+  defaultTab?: 'overview' | 'songs' | 'setlists' | 'statistics';
 }
 
 export default function GroupManagement({ defaultTab }: GroupManagementProps) {
@@ -50,19 +51,20 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
   const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
   const [calendarUrl, setCalendarUrl] = useState('');
   // Determine active tab based on URL and defaultTab
-  const getActiveTab = (): 'overview' | 'songs' | 'setlists' => {
+  const getActiveTab = (): 'overview' | 'songs' | 'setlists' | 'statistics' => {
     if (defaultTab) return defaultTab;
     
     if (location.pathname.endsWith('/songs')) return 'songs';
     if (location.pathname.endsWith('/setlists')) return 'setlists';
+    if (location.pathname.endsWith('/statistics')) return 'statistics';
     
     return 'overview';
   };
   
-  const [activeTab, setActiveTab] = useState<'overview' | 'songs' | 'setlists'>(getActiveTab());
+  const [activeTab, setActiveTab] = useState<'overview' | 'songs' | 'setlists' | 'statistics'>(getActiveTab());
 
   // Handle tab navigation
-  const handleTabChange = (tab: 'overview' | 'songs' | 'setlists') => {
+  const handleTabChange = (tab: 'overview' | 'songs' | 'setlists' | 'statistics') => {
     setActiveTab(tab);
     
     // Navigate to appropriate URL
@@ -72,6 +74,9 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
         break;
       case 'setlists':
         navigate(`/group/${id}/setlists`);
+        break;
+      case 'statistics':
+        navigate(`/group/${id}/statistics`);
         break;
       case 'overview':
       default:
@@ -556,6 +561,18 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
             <span className="hidden sm:inline">Canciones y Setlists</span>
             <span className="sm:hidden">Música</span>
           </button>
+          <button
+            onClick={() => handleTabChange('statistics')}
+            className={`${
+              activeTab === 'statistics'
+                ? 'border-indigo-500 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            } whitespace-nowrap py-3 sm:py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-1 sm:space-x-2`}
+          >
+            <BarChart3 className="w-3 h-3 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">Estadísticas</span>
+            <span className="sm:hidden">Stats</span>
+          </button>
         </nav>
       </div>
 
@@ -618,6 +635,13 @@ export default function GroupManagement({ defaultTab }: GroupManagementProps) {
           canManageSongs={userRole === 'admin' || isPrincipalMember}
           canManageSetlists={userRole === 'admin' || isPrincipalMember}
           defaultTab={activeTab === 'setlists' ? 'setlists' : 'songs'}
+        />
+      )}
+
+      {activeTab === 'statistics' && group && id && (
+        <GroupStatistics 
+          groupId={id}
+          members={members}
         />
       )}
 
