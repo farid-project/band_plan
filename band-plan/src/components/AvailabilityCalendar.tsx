@@ -146,6 +146,9 @@ useEffect(() => {
   }
 }, [user, groupId]);
 
+  // OPTIMIZACIÓN DE RENDIMIENTO: Sistema de caché inteligente para evitar recálculos
+  // Los siguientes useMemo pre-calculan datos pesados una sola vez y los cachean
+  
   // ENFOQUE MINIMALISTA: Solo obtener fechas marcadas por cada miembro (sin cálculos complejos)
   const memberDateMap = useMemo(() => {
     
@@ -187,41 +190,54 @@ useEffect(() => {
     return { groupEvents, externalEvents };
   }, [memberEvents, memberExternalEvents]);
 
-  // Función simple para obtener miembros disponibles en una fecha específica (lazy calculation)
-  const getAvailableMembersForDate = useCallback((date: Date) => {
-    const dateStr = format(date, 'yyyy-MM-dd');
+  // Caché optimizado para miembros disponibles por fecha
+  const availableMembersCache = useMemo(() => {
+    const cache = new Map<string, ExtendedGroupMember[]>();
     
-    const availableMembers = members.filter(member => {
-      if (member.user_id) {
-        // Registered member - check availability and events
-        const hasMarkedAvailability = memberDateMap.get(member.user_id)?.has(dateStr) ?? false;
-        const hasGroupEvent = eventMaps.groupEvents.get(member.user_id)?.has(dateStr) ?? false;
-        const hasExternalEvent = eventMaps.externalEvents.get(member.user_id)?.has(dateStr) ?? false;
-        
-        return hasMarkedAvailability && !hasGroupEvent && !hasExternalEvent;
-      } else {
-        // Local member - check availability in our state (no external events to worry about)
-        const memberAvailability = availabilities.find(a => a.memberId === member.id);
-        const hasMarkedAvailability = memberAvailability?.dates.some(d => 
-          format(d, 'yyyy-MM-dd') === dateStr
-        ) ?? false;
-        
-        
-        return hasMarkedAvailability;
-      }
+    // Pre-calcular disponibilidad para todas las fechas con actividad
+    const allActiveDates = new Set<string>();
+    memberDateMap.forEach(dates => {
+      dates.forEach(date => allActiveDates.add(date));
     });
     
+    allActiveDates.forEach(dateStr => {
+      const availableMembers = members.filter(member => {
+        if (member.user_id) {
+          // Registered member - check availability and events
+          const hasMarkedAvailability = memberDateMap.get(member.user_id)?.has(dateStr) ?? false;
+          const hasGroupEvent = eventMaps.groupEvents.get(member.user_id)?.has(dateStr) ?? false;
+          const hasExternalEvent = eventMaps.externalEvents.get(member.user_id)?.has(dateStr) ?? false;
+          
+          return hasMarkedAvailability && !hasGroupEvent && !hasExternalEvent;
+        } else {
+          // Local member - check availability in our state (no external events to worry about)
+          const memberAvailability = availabilities.find(a => a.memberId === member.id);
+          const hasMarkedAvailability = memberAvailability?.dates.some(d => 
+            format(d, 'yyyy-MM-dd') === dateStr
+          ) ?? false;
+          
+          return hasMarkedAvailability;
+        }
+      });
+      
+      cache.set(dateStr, availableMembers);
+    });
     
-    return availableMembers;
+    return cache;
   }, [members, memberDateMap, eventMaps, availabilities]);
 
-  // Función para verificar si todos los instrumentos están cubiertos en una fecha
-  const areAllInstrumentsCovered = useCallback((date: Date) => {
-    const availableMembers = getAvailableMembersForDate(date);
+  // Función optimizada para obtener miembros disponibles
+  const getAvailableMembersForDate = useCallback((date: Date) => {
+    const dateStr = format(date, 'yyyy-MM-dd');
+    return availableMembersCache.get(dateStr) || [];
+  }, [availableMembersCache]);
+
+  // Caché optimizado para verificar cobertura de instrumentos
+  const instrumentCoverageCache = useMemo(() => {
+    const cache = new Map<string, boolean>();
     const principalMembers = members.filter(m => m.role_in_group === 'principal');
-    const availableSubstitutes = availableMembers.filter(m => m.role_in_group === 'sustituto');
     
-    // Obtener todos los instrumentos que necesita la banda (de los principales)
+    // Pre-calcular instrumentos requeridos una sola vez
     const requiredInstruments = new Set<string>();
     principalMembers.forEach(principal => {
       principal.instruments.forEach(instrument => {
@@ -229,62 +245,59 @@ useEffect(() => {
       });
     });
     
-    // Verificar que cada instrumento requerido esté cubierto
-    return Array.from(requiredInstruments).every(instrumentId => {
-      // Verificar si algún principal disponible toca este instrumento
-      const principalCovered = availableMembers.some(member => 
-        member.role_in_group === 'principal' && 
-        member.instruments.some(instrument => instrument.id === instrumentId)
-      );
+    // Pre-calcular cobertura para todas las fechas activas
+    availableMembersCache.forEach((availableMembers, dateStr) => {
+      const availableSubstitutes = availableMembers.filter(m => m.role_in_group === 'sustituto');
       
-      // Si no hay principal disponible, verificar si algún sustituto puede cubrirlo
-      if (!principalCovered) {
-        const substituteCovered = availableSubstitutes.some(substitute => 
-          substitute.instruments.some(instrument => instrument.id === instrumentId)
+      // Verificar que cada instrumento requerido esté cubierto
+      const allCovered = Array.from(requiredInstruments).every(instrumentId => {
+        // Verificar si algún principal disponible toca este instrumento
+        const principalCovered = availableMembers.some(member => 
+          member.role_in_group === 'principal' && 
+          member.instruments.some(instrument => instrument.id === instrumentId)
         );
-        return substituteCovered;
-      }
+        
+        // Si no hay principal disponible, verificar si algún sustituto puede cubrirlo
+        if (!principalCovered) {
+          const substituteCovered = availableSubstitutes.some(substitute => 
+            substitute.instruments.some(instrument => instrument.id === instrumentId)
+          );
+          return substituteCovered;
+        }
+        
+        return true;
+      });
       
-      return true;
+      cache.set(dateStr, allCovered);
     });
-  }, [members, getAvailableMembersForDate]);
+    
+    return cache;
+  }, [members, availableMembersCache]);
 
-  // Calcular fechas disponibles para el callback (solo si se necesita)
+  // Función optimizada para verificar cobertura de instrumentos
+  const areAllInstrumentsCovered = useCallback((date: Date) => {
+    const dateStr = format(date, 'yyyy-MM-dd');
+    return instrumentCoverageCache.get(dateStr) ?? false;
+  }, [instrumentCoverageCache]);
+
+  // Calcular fechas disponibles para el callback (optimizado con caché)
   const groupAvailableDatesCalculated = useMemo(() => {
     if (!onAvailableDatesChange) return []; // No calcular si no se necesita
-    
-    
-    const allDates = new Set<string>();
-    memberDateMap.forEach(dates => {
-      dates.forEach(date => allDates.add(date));
-    });
     
     const principalMembers = members.filter(m => m.role_in_group === 'principal');
     if (principalMembers.length === 0) return [];
     
     const availableDates: Date[] = [];
     
-    allDates.forEach(dateStr => {
-      const date = new Date(dateStr);
-      
-      // Verificar si todos los instrumentos están cubiertos (principales + sustitutos)
-      if (areAllInstrumentsCovered(date)) {
-        availableDates.push(date);
-        
-        const availableMembers = getAvailableMembersForDate(date);
-        const availablePrincipals = availableMembers.filter(m => m.role_in_group === 'principal');
-        const availableSubstitutes = availableMembers.filter(m => m.role_in_group === 'sustituto');
-        
-      } else {
-        const availableMembers = getAvailableMembersForDate(date);
-        const availablePrincipals = availableMembers.filter(m => m.role_in_group === 'principal');
-        const availableSubstitutes = availableMembers.filter(m => m.role_in_group === 'sustituto');
-        
+    // Usar el caché pre-calculado para obtener fechas con cobertura completa
+    instrumentCoverageCache.forEach((isCovered, dateStr) => {
+      if (isCovered) {
+        availableDates.push(new Date(dateStr));
       }
     });
     
-    return availableDates;
-  }, [members, memberDateMap, getAvailableMembersForDate, onAvailableDatesChange, areAllInstrumentsCovered]);
+    return availableDates.sort((a, b) => a.getTime() - b.getTime());
+  }, [members, instrumentCoverageCache, onAvailableDatesChange]);
 
   // Actualizar el estado para el callback
   useEffect(() => {
@@ -757,26 +770,49 @@ useEffect(() => {
 
     // Eliminamos la función no utilizada para evitar warnings
 
-  // Función simple para obtener miembros para un día (usa lazy calculation)
-  function getMembersForDay(date: Date) {
-    const availableMembers = getAvailableMembersForDate(date);
-    const dateStr = format(date, 'yyyy-MM-dd');
+  // Caché optimizado para miembros por día (disponibles + con eventos)
+  const membersForDayCache = useMemo(() => {
+    const cache = new Map<string, ExtendedGroupMember[]>();
     
-    // También incluir miembros que tienen eventos del grupo (aunque no estén "disponibles")
-    const membersWithGroupEvents = members.filter(member => 
-      member.user_id && eventMaps.groupEvents.get(member.user_id)?.has(dateStr)
-    );
-    
-    // Combinar ambos grupos sin duplicados
-    const allMembers = [...availableMembers];
-    membersWithGroupEvents.forEach(member => {
-      if (!allMembers.find(m => m.id === member.id)) {
-        allMembers.push(member);
-      }
+    // Pre-calcular para todas las fechas activas
+    const allActiveDates = new Set<string>();
+    memberDateMap.forEach(dates => {
+      dates.forEach(date => allActiveDates.add(date));
+    });
+    eventMaps.groupEvents.forEach(dates => {
+      dates.forEach(date => allActiveDates.add(date));
     });
     
-    return allMembers;
-  }
+    allActiveDates.forEach(dateStr => {
+      const availableMembers = availableMembersCache.get(dateStr) || [];
+      
+      // También incluir miembros que tienen eventos del grupo (aunque no estén "disponibles")
+      const membersWithGroupEvents = members.filter(member => 
+        member.user_id && eventMaps.groupEvents.get(member.user_id)?.has(dateStr)
+      );
+      
+      // Combinar ambos grupos sin duplicados usando Set para mejor rendimiento
+      const memberIds = new Set(availableMembers.map(m => m.id));
+      const allMembers = [...availableMembers];
+      
+      membersWithGroupEvents.forEach(member => {
+        if (!memberIds.has(member.id)) {
+          allMembers.push(member);
+          memberIds.add(member.id);
+        }
+      });
+      
+      cache.set(dateStr, allMembers);
+    });
+    
+    return cache;
+  }, [members, availableMembersCache, eventMaps]);
+
+  // Función optimizada para obtener miembros para un día
+  const getMembersForDay = useCallback((date: Date) => {
+    const dateStr = format(date, 'yyyy-MM-dd');
+    return membersForDayCache.get(dateStr) || [];
+  }, [membersForDayCache]);
 
   const DayContent = (props: { date: Date }) => {
     const { date } = props;
