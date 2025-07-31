@@ -1147,39 +1147,185 @@ useEffect(() => {
     window.URL.revokeObjectURL(url);
   };
 
-  const downloadAvailabilityPDF = () => {
-    // Filtrar solo fechas futuras y sin eventos
+  const downloadAvailabilityPDF = async () => {
+    // Obtener todas las disponibilidades futuras desde la base de datos
     const today = new Date();
-    today.setHours(0, 0, 0, 0); // Reset time to start of day
+    today.setHours(0, 0, 0, 0);
     
-    const availableDatesWithoutEvents = groupAvailableDatesCalculated
-      .filter(date => date >= today) // Solo fechas futuras
-      .filter(date => getEventsForDate(date).length === 0)
-      .sort((a, b) => a.getTime() - b.getTime());
+    toast.loading('Generando PDF...', { id: 'pdf-generation' });
+    
+    try {
+      // Obtener disponibilidades de los próximos 12 meses
+      const futureDate = new Date();
+      futureDate.setFullYear(futureDate.getFullYear() + 1);
+      
+      const registeredMemberIds = members
+        .filter(m => m.user_id !== null)
+        .map(m => m.user_id!);
+      
+      const localMemberIds = members
+        .filter(m => m.user_id === null)
+        .map(m => m.id);
 
-    // Agrupar fechas por mes
-    const datesByMonth = availableDatesWithoutEvents.reduce((acc, date) => {
-      const monthKey = format(date, 'MMMM yyyy', { locale: es });
-      if (!acc[monthKey]) {
-        acc[monthKey] = {
-          withPrincipals: [],
-          withSubstitutes: []
-        };
+      if (registeredMemberIds.length === 0 && localMemberIds.length === 0) {
+        toast.error('No hay miembros en el grupo', { id: 'pdf-generation' });
+        return;
       }
 
-      const membersForDay = getMembersForDay(date);
-      const unavailablePrincipals = members
-        .filter(m => m.role_in_group === 'principal')
-        .filter(principal => !membersForDay.some(m => m.user_id === principal.user_id));
+      // Obtener todas las disponibilidades futuras
+      let query = supabase
+        .from('member_availability')
+        .select('user_id, group_member_id, date')
+        .gte('date', format(today, 'yyyy-MM-dd'))
+        .lte('date', format(futureDate, 'yyyy-MM-dd'));
 
-      if (unavailablePrincipals.length === 0) {
-        acc[monthKey].withPrincipals.push(date);
-      } else {
-        acc[monthKey].withSubstitutes.push(date);
+      const conditions = [];
+      if (registeredMemberIds.length > 0) {
+        conditions.push(`user_id.in.(${registeredMemberIds.join(',')})`);
+      }
+      if (localMemberIds.length > 0) {
+        conditions.push(`group_member_id.in.(${localMemberIds.join(',')})`);
       }
 
-      return acc;
-    }, {} as Record<string, { withPrincipals: Date[], withSubstitutes: Date[] }>);
+      if (conditions.length > 0) {
+        query = query.or(conditions.join(','));
+      }
+
+      const { data: futureAvailabilities, error } = await query;
+
+      if (error) {
+        console.error('Error fetching future availabilities:', error);
+        toast.error('Error al obtener las disponibilidades', { id: 'pdf-generation' });
+        return;
+      }
+
+      if (!futureAvailabilities) {
+        toast.error('No se pudieron obtener las disponibilidades', { id: 'pdf-generation' });
+        return;
+      }
+
+      // Procesar las disponibilidades para crear el mapa de fechas por miembro
+      const memberAvailabilityMap = new Map<string, Set<string>>();
+      
+      futureAvailabilities.forEach(avail => {
+        const memberId = avail.user_id || avail.group_member_id;
+        if (!memberId) return;
+        
+        if (!memberAvailabilityMap.has(memberId)) {
+          memberAvailabilityMap.set(memberId, new Set<string>());
+        }
+        memberAvailabilityMap.get(memberId)!.add(format(new Date(avail.date), 'yyyy-MM-dd'));
+      });
+
+      // Calcular fechas donde todos los instrumentos principales están cubiertos
+      const principalMembers = members.filter(m => m.role_in_group === 'principal');
+      if (principalMembers.length === 0) {
+        toast.error('No hay miembros principales en el grupo', { id: 'pdf-generation' });
+        return;
+      }
+
+      // Obtener todos los instrumentos requeridos (de los principales)
+      const requiredInstruments = new Set<string>();
+      principalMembers.forEach(member => {
+        if (member.instruments && member.instruments.length > 0) {
+          member.instruments.forEach(instrument => {
+            requiredInstruments.add(instrument.id);
+          });
+        }
+      });
+
+      if (requiredInstruments.size === 0) {
+        toast.error('Los miembros principales no tienen instrumentos asignados', { id: 'pdf-generation' });
+        return;
+      }
+
+      const availableDates: Date[] = [];
+      
+      // Revisar cada día de los próximos 12 meses
+      const currentDate = new Date(today);
+      while (currentDate <= futureDate) {
+        const dateStr = format(currentDate, 'yyyy-MM-dd');
+        
+        // Obtener miembros principales disponibles en esta fecha
+        const availablePrincipals = principalMembers.filter(member => {
+          const memberKey = member.user_id || member.id;
+          return memberAvailabilityMap.get(memberKey)?.has(dateStr) || false;
+        });
+
+        // Verificar si todos los instrumentos requeridos están cubiertos
+        const coveredInstruments = new Set<string>();
+        availablePrincipals.forEach(member => {
+          if (member.instruments && member.instruments.length > 0) {
+            member.instruments.forEach(instrument => {
+              coveredInstruments.add(instrument.id);
+            });
+          }
+        });
+
+        // Si todos los instrumentos requeridos están cubiertos, la fecha está disponible
+        const allInstrumentsCovered = Array.from(requiredInstruments).every(instrumentId => 
+          coveredInstruments.has(instrumentId)
+        );
+
+        if (allInstrumentsCovered) {
+          availableDates.push(new Date(currentDate));
+        }
+
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+
+      // Filtrar fechas que no tienen eventos y ordenar
+      const availableDatesWithoutEvents = availableDates
+        .filter(date => getEventsForDate(date).length === 0)
+        .sort((a, b) => a.getTime() - b.getTime());
+
+      if (availableDatesWithoutEvents.length === 0) {
+        toast.error('No hay fechas disponibles para mostrar en el PDF', { id: 'pdf-generation' });
+        return;
+      }
+
+      // Agrupar fechas por mes
+      const datesByMonth = availableDatesWithoutEvents.reduce((acc, date) => {
+        const monthKey = format(date, 'MMMM yyyy', { locale: es });
+        if (!acc[monthKey]) {
+          acc[monthKey] = {
+            withPrincipals: [],
+            withSubstitutes: []
+          };
+        }
+
+        const dateStr = format(date, 'yyyy-MM-dd');
+        
+        // Obtener miembros principales disponibles en esta fecha
+        const availablePrincipals = principalMembers.filter(member => {
+          const memberKey = member.user_id || member.id;
+          return memberAvailabilityMap.get(memberKey)?.has(dateStr) || false;
+        });
+
+        // Verificar si todos los instrumentos están cubiertos solo por principales
+        const principalCoveredInstruments = new Set<string>();
+        availablePrincipals.forEach(member => {
+          if (member.instruments && member.instruments.length > 0) {
+            member.instruments.forEach(instrument => {
+              principalCoveredInstruments.add(instrument.id);
+            });
+          }
+        });
+
+        const allInstrumentsCoveredByPrincipals = Array.from(requiredInstruments).every(instrumentId => 
+          principalCoveredInstruments.has(instrumentId)
+        );
+
+        // Si todos los instrumentos están cubiertos por principales, es una fecha ideal
+        // Si no, significa que necesita sustitutos
+        if (allInstrumentsCoveredByPrincipals) {
+          acc[monthKey].withPrincipals.push(date);
+        } else {
+          acc[monthKey].withSubstitutes.push(date);
+        }
+
+        return acc;
+      }, {} as Record<string, { withPrincipals: Date[], withSubstitutes: Date[] }>);
 
     // Crear PDF con diseño minimalista
     const pdf = new jsPDF('p', 'mm', 'a4');
@@ -1327,15 +1473,22 @@ useEffect(() => {
       }
     }
 
-    // Abrir PDF en nueva pestaña
-    const pdfBlob = pdf.output('blob');
-    const pdfUrl = URL.createObjectURL(pdfBlob);
-    window.open(pdfUrl, '_blank');
-    
-    // Limpiar la URL después de un tiempo para liberar memoria
-    setTimeout(() => {
-      URL.revokeObjectURL(pdfUrl);
-    }, 1000);
+      // Abrir PDF en nueva pestaña
+      const pdfBlob = pdf.output('blob');
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      window.open(pdfUrl, '_blank');
+      
+      // Limpiar la URL después de un tiempo para liberar memoria
+      setTimeout(() => {
+        URL.revokeObjectURL(pdfUrl);
+      }, 1000);
+
+      toast.success('PDF generado correctamente', { id: 'pdf-generation' });
+      
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      toast.error('Error al generar el PDF', { id: 'pdf-generation' });
+    }
   };
 
   if (loading) {
