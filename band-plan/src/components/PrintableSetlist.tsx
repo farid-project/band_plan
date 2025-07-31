@@ -16,15 +16,15 @@ const PrintableSetlist: React.FC<PrintableSetlistProps> = ({ setlist, event, ban
     const suffix = printFriendly ? ' (Print)' : ' (Digital)';
     const fileName = `${bandName || 'Setlist'} - ${event?.name || 'Event'}${suffix}.pdf`;
     
-    if (printFriendly) {
-      // Open in browser for print version
-      const pdfBlob = pdf.output('blob');
-      const pdfUrl = URL.createObjectURL(pdfBlob);
-      window.open(pdfUrl, '_blank');
-    } else {
-      // Download for digital version
-      pdf.save(fileName);
-    }
+    // Always open in new tab instead of downloading
+    const pdfBlob = pdf.output('blob');
+    const pdfUrl = URL.createObjectURL(pdfBlob);
+    window.open(pdfUrl, '_blank');
+    
+    // Clean up the URL after a short delay
+    setTimeout(() => {
+      URL.revokeObjectURL(pdfUrl);
+    }, 1000);
   };
 
   useEffect(() => {
