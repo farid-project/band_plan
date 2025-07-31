@@ -73,6 +73,9 @@ class SpotifyService {
     // Subscribe to auth changes
     this.subscribeToAuthChanges();
     
+    // Start periodic token refresh check
+    this.startPeriodicTokenCheck();
+    
   }
 
   private getRedirectUri(): string {
@@ -270,7 +273,7 @@ class SpotifyService {
         this.refreshToken = data.refresh_token;
       }
 
-      this.saveTokensToStorage();
+      await this.saveTokensToStorage();
       return true;
     } catch (error) {
       console.error('Error refreshing access token:', error);
@@ -420,6 +423,39 @@ class SpotifyService {
   async getPlaylistTracks(playlistId: string, limit: number = 100): Promise<SpotifyTrack[]> {
     const response = await this.apiRequest<{ items: { track: SpotifyTrack }[] }>(`/playlists/${playlistId}/tracks?limit=${limit}`);
     return response.items.map(item => item.track);
+  }
+
+  // Periodic token check to ensure it stays fresh
+  private startPeriodicTokenCheck(): void {
+    // Check every 5 minutes
+    setInterval(async () => {
+      if (this.accessToken && this.tokenExpiry) {
+        const timeUntilExpiry = this.tokenExpiry - Date.now();
+        
+        // If token expires within 10 minutes, refresh it
+        if (timeUntilExpiry <= 10 * 60 * 1000) {
+          await this.refreshAccessToken();
+        }
+      }
+    }, 5 * 60 * 1000); // Every 5 minutes
+  }
+
+  // Manual method to check and refresh token (for debugging)
+  async checkTokenStatus(): Promise<void> {
+    console.log('🎵 Token status:', {
+      hasAccessToken: !!this.accessToken,
+      hasRefreshToken: !!this.refreshToken,
+      expiresAt: this.tokenExpiry ? new Date(this.tokenExpiry).toISOString() : null,
+      secondsUntilExpiry: this.tokenExpiry ? Math.round((this.tokenExpiry - Date.now()) / 1000) : null
+    });
+    
+    if (this.tokenExpiry) {
+      const timeUntilExpiry = this.tokenExpiry - Date.now();
+      if (timeUntilExpiry <= 10 * 60 * 1000) {
+        console.log('🎵 Refreshing token...');
+        await this.refreshAccessToken();
+      }
+    }
   }
 
   // Utility methods
@@ -691,3 +727,6 @@ class SpotifyService {
 }
 
 export const spotifyService = new SpotifyService();
+
+// Expose globally for debugging
+(window as any).spotifyService = spotifyService;
