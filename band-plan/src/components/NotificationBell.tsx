@@ -28,33 +28,44 @@ export default function NotificationBell() {
   const [channel, setChannel] = useState<RealtimeChannel | null>(null);
 
   useEffect(() => {
-    if (user) {
+    let isActive = true; // Prevent state updates if component unmounted
+
+    const fetchNotifications = async () => {
+      if (!user?.id || !isActive) return;
+
+      try {
+        const { data, error } = await supabase
+          .from('notifications')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('read', false)
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          console.error('Error fetching notifications:', error);
+          return;
+        }
+
+        if (isActive) {
+          setNotifications(data || []);
+        }
+      } catch (error) {
+        console.error('Error fetching notifications:', error);
+      }
+    };
+
+    if (user?.id && isActive) {
       fetchNotifications();
       setupRealtimeSubscription();
-
-      return () => {
-        if (channel) {
-          channel.unsubscribe();
-        }
-      };
-    }
-  }, [user]);
-
-  const fetchNotifications = async () => {
-    const { data, error } = await supabase
-      .from('notifications')
-      .select('*')
-      .eq('user_id', user?.id)
-      .eq('read', false)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching notifications:', error);
-      return;
     }
 
-    setNotifications(data || []);
-  };
+    return () => {
+      isActive = false;
+      if (channel) {
+        channel.unsubscribe();
+      }
+    };
+  }, [user?.id]); // Only depend on user.id, not entire user object
 
   const setupRealtimeSubscription = async () => {
     try {

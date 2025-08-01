@@ -7,8 +7,12 @@ const SpotifyCallback = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [processing, setProcessing] = useState(true);
+  const [callbackProcessed, setCallbackProcessed] = useState(false);
 
   useEffect(() => {
+    // Prevent double execution in React StrictMode
+    if (callbackProcessed) return;
+    
     const handleCallback = async () => {
       try {
         const params = new URLSearchParams(location.search);
@@ -24,6 +28,7 @@ const SpotifyCallback = () => {
 
         if (error) {
           console.error('❌ Spotify auth error:', error);
+          setCallbackProcessed(true);
           toast.error(`Error de autenticación de Spotify: ${error}`);
           navigate('/');
           return;
@@ -31,17 +36,36 @@ const SpotifyCallback = () => {
 
         if (!code || !state) {
           console.error('❌ Missing code or state parameters');
+          setCallbackProcessed(true);
           toast.error('Parámetros de autenticación faltantes');
           navigate('/');
           return;
         }
 
+        setCallbackProcessed(true);
+
         const success = await spotifyService.handleAuthCallback(code, state);
 
         if (success) {
           console.log('✅ Spotify authentication successful');
-          const userData = await spotifyService.getCurrentUser();
-          toast.success(`¡Conectado a Spotify como ${userData.display_name}!`);
+          
+          // Wait a moment for tokens to be fully saved
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // Verify tokens are available before making API call
+          if (!spotifyService.isAuthenticated()) {
+            console.error('❌ Tokens not available after authentication');
+            throw new Error('Authentication completed but tokens not available');
+          }
+          
+          // Try to get user data, but don't fail the entire auth if it fails
+          try {
+            const userData = await spotifyService.getCurrentUser();
+            toast.success(`¡Conectado a Spotify como ${userData.display_name}!`);
+          } catch (userError) {
+            console.warn('⚠️ Could not fetch user data immediately, but auth was successful:', userError);
+            toast.success('¡Conectado a Spotify exitosamente!');
+          }
           
           // Notify components that auth completed
           window.dispatchEvent(new CustomEvent('spotifyAuthCompleted'));

@@ -28,17 +28,23 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
+    let isActive = true;
+
     const initializeDashboard = async () => {
-      if (user) {
+      if (user?.id && isActive) {
         await fetchGroups();
       }
     };
 
     initializeDashboard();
-  }, [user]);
+
+    return () => {
+      isActive = false;
+    };
+  }, [user?.id]);
 
   const fetchGroups = async () => {
-    if (!user) return;
+    if (!user?.id) return;
 
     try {
       setLoading(true);
